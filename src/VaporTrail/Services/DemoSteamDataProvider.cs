@@ -91,11 +91,60 @@ public static class DemoSteamDataProvider
             TopPlayedGames: games,
             IsDemoData: true,
             FromCache: false,
-            FetchedAtUtc: now
+            FetchedAtUtc: now,
+            Standing: CleanStanding(),
+            Progression: new AccountProgression(
+                PlayerXp: 6420,
+                XpNeededToLevelUp: 180,
+                XpNeededCurrentLevel: 6200,
+                BadgeCount: 12,
+                FriendCount: 38,
+                LevelProgressPercent: 55.0
+            )
         );
 
         return SteamLookupResult.Ok(profile);
     }
+
+    public static IReadOnlyList<(int AppId, double PlaytimeHours)> GetDemoLibraryForBreakdown(SteamProfileResponse profile)
+    {
+        var baseList = profile.TopPlayedGames
+            .Select(g => (g.AppId, g.PlaytimeHours))
+            .ToList();
+
+        if (profile.SteamId == "76561198000000001")
+        {
+            baseList.AddRange([
+                (1145360, 74.0),
+                (1091500, 52.0),
+                (570, 38.0)
+            ]);
+        }
+        else if (profile.SteamId == "76561197960435530")
+        {
+            baseList.AddRange([
+                (413150, 96.0),
+                (1145360, 64.0),
+                (4000, 51.0)
+            ]);
+        }
+
+        return baseList
+            .GroupBy(x => x.AppId)
+            .Select(g => (g.Key, g.First().PlaytimeHours))
+            .ToList();
+    }
+
+    private static AccountStanding CleanStanding() =>
+        new(
+            VacBanned: false,
+            VacBanCount: 0,
+            GameBanCount: 0,
+            DaysSinceLastBan: null,
+            CommunityBanned: false,
+            EconomyBan: "none",
+            IsGoodStanding: true
+        );
 
     private static SteamProfileResponse BuildGordonProfile(DateTimeOffset now)
     {
@@ -132,7 +181,16 @@ public static class DemoSteamDataProvider
             TopPlayedGames: topGames,
             IsDemoData: true,
             FromCache: false,
-            FetchedAtUtc: now
+            FetchedAtUtc: now,
+            Standing: CleanStanding(),
+            Progression: new AccountProgression(
+                PlayerXp: 11420,
+                XpNeededToLevelUp: 380,
+                XpNeededCurrentLevel: 11000,
+                BadgeCount: 18,
+                FriendCount: 64,
+                LevelProgressPercent: 52.5
+            )
         );
     }
 
@@ -171,7 +229,16 @@ public static class DemoSteamDataProvider
             TopPlayedGames: topGames,
             IsDemoData: true,
             FromCache: false,
-            FetchedAtUtc: now
+            FetchedAtUtc: now,
+            Standing: CleanStanding(),
+            Progression: new AccountProgression(
+                PlayerXp: 20150,
+                XpNeededToLevelUp: 450,
+                XpNeededCurrentLevel: 19800,
+                BadgeCount: 34,
+                FriendCount: 142,
+                LevelProgressPercent: 43.8
+            )
         );
     }
 
@@ -200,7 +267,10 @@ public static class DemoSteamDataProvider
             TopPlayedGames: [],
             IsDemoData: true,
             FromCache: false,
-            FetchedAtUtc: now
+            FetchedAtUtc: now,
+            Standing: CleanStanding(),
+            Progression: null,
+            Breakdown: null
         );
     }
 

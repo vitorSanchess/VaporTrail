@@ -136,3 +136,99 @@ public sealed class SteamGameDto
     [JsonPropertyName("img_icon_url")]
     public string? ImgIconUrl { get; set; }
 }
+
+public sealed class BadgesEnvelope
+{
+    [JsonPropertyName("response")]
+    public BadgesBody? Response { get; set; }
+}
+
+public sealed class BadgesBody
+{
+    [JsonPropertyName("badges")]
+    public List<SteamBadgeDto>? Badges { get; set; }
+
+    [JsonPropertyName("player_xp")]
+    public int? PlayerXp { get; set; }
+
+    [JsonPropertyName("player_level")]
+    public int? PlayerLevel { get; set; }
+
+    [JsonPropertyName("player_xp_needed_to_level_up")]
+    public int? PlayerXpNeededToLevelUp { get; set; }
+
+    [JsonPropertyName("player_xp_needed_current_level")]
+    public int? PlayerXpNeededCurrentLevel { get; set; }
+}
+
+public sealed class SteamBadgeDto
+{
+    [JsonPropertyName("badgeid")]
+    public int BadgeId { get; set; }
+
+    [JsonPropertyName("level")]
+    public int Level { get; set; }
+
+    [JsonPropertyName("completion_time")]
+    public long CompletionTime { get; set; }
+
+    [JsonPropertyName("xp")]
+    public int Xp { get; set; }
+
+    [JsonPropertyName("scarcity")]
+    public int Scarcity { get; set; }
+}
+
+public sealed class PlayerBansEnvelope
+{
+    [JsonPropertyName("players")]
+    public List<PlayerBanDto>? Players { get; set; }
+}
+
+public sealed class PlayerBanDto
+{
+    [JsonPropertyName("SteamId")]
+    public string SteamId { get; set; } = string.Empty;
+
+    [JsonPropertyName("CommunityBanned")]
+    public bool CommunityBanned { get; set; }
+
+    [JsonPropertyName("VACBanned")]
+    public bool VacBanned { get; set; }
+
+    [JsonPropertyName("NumberOfVACBans")]
+    public int NumberOfVacBans { get; set; }
+
+    [JsonPropertyName("DaysSinceLastBan")]
+    public int DaysSinceLastBan { get; set; }
+
+    [JsonPropertyName("NumberOfGameBans")]
+    public int NumberOfGameBans { get; set; }
+
+    [JsonPropertyName("EconomyBan")]
+    public string EconomyBan { get; set; } = "none";
+}
+
+public sealed class FriendListEnvelope
+{
+    [JsonPropertyName("friendslist")]
+    public FriendListBody? FriendsList { get; set; }
+}
+
+public sealed class FriendListBody
+{
+    [JsonPropertyName("friends")]
+    public List<SteamFriendDto>? Friends { get; set; }
+}
+
+public sealed class SteamFriendDto
+{
+    [JsonPropertyName("steamid")]
+    public string SteamId { get; set; } = string.Empty;
+
+    [JsonPropertyName("relationship")]
+    public string? Relationship { get; set; }
+
+    [JsonPropertyName("friend_since")]
+    public long FriendSince { get; set; }
+}

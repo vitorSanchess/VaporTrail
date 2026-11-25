@@ -18,17 +18,20 @@ public sealed class SteamProfileService : ISteamProfileService
 
     private readonly HttpClient _httpClient;
     private readonly IMemoryCache _cache;
+    private readonly ISteamCatalogService _catalogService;
     private readonly SteamOptions _options;
     private readonly ILogger<SteamProfileService> _logger;
 
     public SteamProfileService(
         HttpClient httpClient,
         IMemoryCache cache,
+        ISteamCatalogService catalogService,
         IOptions<SteamOptions> options,
         ILogger<SteamProfileService> logger)
     {
         _httpClient = httpClient;
         _cache = cache;
+        _catalogService = catalogService;
         _options = options.Value;
         _logger = logger;
     }
@@ -40,7 +43,8 @@ public sealed class SteamProfileService : ISteamProfileService
             Mode: isDemo ? "demo" : "live",
             IsDemoMode: isDemo,
             CacheDurationMinutes: Math.Max(1, _options.CacheDurationMinutes),
-            SampleProfiles: DemoSteamDataProvider.GetSampleHints(isDemo)
+            SampleProfiles: DemoSteamDataProvider.GetSampleHints(isDemo),
+            Catalog: _catalogService.GetStatus()
         );
     }
 
@@ -68,7 +72,21 @@ public sealed class SteamProfileService : ISteamProfileService
             var demoResult = DemoSteamDataProvider.ResolveDemoProfile(parsed, now);
             if (demoResult.IsSuccess && demoResult.Profile is not null)
             {
-                CacheProfile(queryCacheKey, demoResult.Profile);
+                var enriched = demoResult.Profile;
+                if (!enriched.GamesArePrivate)
+                {
+                    var library = DemoSteamDataProvider.GetDemoLibraryForBreakdown(enriched);
+                    var catalogGames = await _catalogService.GetGamesByAppIdsAsync(
+                        library.Select(x => x.AppId),
+                        cancellationToken);
+                    enriched = enriched with
+                    {
+                        Breakdown = LibraryBreakdownBuilder.Build(library, catalogGames)
+                    };
+                    demoResult = SteamLookupResult.Ok(enriched);
+                }
+
+                CacheProfile(queryCacheKey, enriched);
             }
             return demoResult;
         }
@@ -93,13 +111,16 @@ public sealed class SteamProfileService : ISteamProfileService
                 return SteamLookupResult.Ok(cachedById with { FromCache = true });
             }
 
-            // Fetch all 4 Steam Web API endpoints in parallel.
+            // Fetch all 7 Steam Web API endpoints in parallel.
             var summaryTask = FetchPlayerSummaryAsync(steamId, cancellationToken);
             var levelTask = FetchSteamLevelAsync(steamId, cancellationToken);
             var recentTask = FetchRecentlyPlayedAsync(steamId, cancellationToken);
             var ownedTask = FetchOwnedGamesAsync(steamId, cancellationToken);
+            var badgesTask = FetchBadgesAsync(steamId, cancellationToken);
+            var bansTask = FetchPlayerBansAsync(steamId, cancellationToken);
+            var friendCountTask = FetchFriendCountAsync(steamId, cancellationToken);
 
-            await Task.WhenAll(summaryTask, levelTask, recentTask, ownedTask);
+            await Task.WhenAll(summaryTask, levelTask, recentTask, ownedTask, badgesTask, bansTask, friendCountTask);
 
             var player = await summaryTask;
             if (player is null)
@@ -112,6 +133,9 @@ public sealed class SteamProfileService : ISteamProfileService
             var steamLevel = await levelTask;
             var recentEnvelope = await recentTask;
             var ownedEnvelope = await ownedTask;
+            var badgesBody = await badgesTask;
+            var banDto = await bansTask;
+            var friendCount = await friendCountTask;
 
             var isPublic = player.CommunityVisibilityState == 3;
             var (statusText, statusKind) = MapPersonaStatus(player);
@@ -142,6 +166,21 @@ public sealed class SteamProfileService : ISteamProfileService
                 .Select(MapGameSummary)
                 .ToList();
 
+            var standing = BuildAccountStanding(banDto);
+            var progression = BuildAccountProgression(badgesBody, friendCount);
+
+            LibraryBreakdown? breakdown = null;
+            if (!gamesArePrivate && ownedGames.Count > 0)
+            {
+                var ownedPairs = ownedGames
+                    .Select(g => (g.AppId, Math.Round(g.PlaytimeForever / 60.0, 1)))
+                    .ToList();
+                var catalogGames = await _catalogService.GetGamesByAppIdsAsync(
+                    ownedPairs.Select(x => x.AppId),
+                    cancellationToken);
+                breakdown = LibraryBreakdownBuilder.Build(ownedPairs, catalogGames);
+            }
+
             var profile = new SteamProfileResponse(
                 SteamId: player.SteamId,
                 PersonaName: player.PersonaName,
@@ -161,7 +200,7 @@ public sealed class SteamProfileService : ISteamProfileService
                     ? DateTimeOffset.FromUnixTimeSeconds(player.LastLogoff.Value)
                     : null,
                 IsPublic: isPublic,
-                SteamLevel: steamLevel,
+                SteamLevel: steamLevel ?? badgesBody?.PlayerLevel,
                 GamesArePrivate: gamesArePrivate,
                 TotalOwnedGames: totalOwnedGames,
                 TotalPlaytimeHours: totalPlaytimeHours,
@@ -169,7 +208,10 @@ public sealed class SteamProfileService : ISteamProfileService
                 TopPlayedGames: topPlayed,
                 IsDemoData: false,
                 FromCache: false,
-                FetchedAtUtc: now
+                FetchedAtUtc: now,
+                Standing: standing,
+                Progression: progression,
+                Breakdown: breakdown
             );
 
             CacheProfile(queryCacheKey, profile);
@@ -294,6 +336,128 @@ public sealed class SteamProfileService : ISteamProfileService
             _logger.LogDebug(ex, "Could not fetch owned games for {SteamId}", steamId);
             return null;
         }
+    }
+
+    private async Task<BadgesBody?> FetchBadgesAsync(string steamId, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"IPlayerService/GetBadges/v1/?key={Uri.EscapeDataString(_options.ApiKey!)}&steamid={Uri.EscapeDataString(steamId)}";
+            using var response = await _httpClient.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var envelope = await response.Content.ReadFromJsonAsync<BadgesEnvelope>(JsonOptions, ct);
+            return envelope?.Response;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Could not fetch badges for {SteamId}", steamId);
+            return null;
+        }
+    }
+
+    private async Task<PlayerBanDto?> FetchPlayerBansAsync(string steamId, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"ISteamUser/GetPlayerBans/v1/?key={Uri.EscapeDataString(_options.ApiKey!)}&steamids={Uri.EscapeDataString(steamId)}";
+            using var response = await _httpClient.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var envelope = await response.Content.ReadFromJsonAsync<PlayerBansEnvelope>(JsonOptions, ct);
+            return envelope?.Players?.FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Could not fetch ban standing for {SteamId}", steamId);
+            return null;
+        }
+    }
+
+    private async Task<int?> FetchFriendCountAsync(string steamId, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"ISteamUser/GetFriendList/v1/?key={Uri.EscapeDataString(_options.ApiKey!)}&steamid={Uri.EscapeDataString(steamId)}&relationship=friend";
+            using var response = await _httpClient.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var envelope = await response.Content.ReadFromJsonAsync<FriendListEnvelope>(JsonOptions, ct);
+            return envelope?.FriendsList?.Friends?.Count;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Could not fetch friend list for {SteamId}", steamId);
+            return null;
+        }
+    }
+
+    private static AccountStanding? BuildAccountStanding(PlayerBanDto? dto)
+    {
+        if (dto is null)
+        {
+            return null;
+        }
+
+        var economyBan = string.IsNullOrWhiteSpace(dto.EconomyBan) ? "none" : dto.EconomyBan;
+        var hasEconomyBan = !economyBan.Equals("none", StringComparison.OrdinalIgnoreCase);
+        var hasAnyBan = dto.VacBanned
+            || dto.CommunityBanned
+            || dto.NumberOfVacBans > 0
+            || dto.NumberOfGameBans > 0
+            || hasEconomyBan;
+
+        return new AccountStanding(
+            VacBanned: dto.VacBanned,
+            VacBanCount: dto.NumberOfVacBans,
+            GameBanCount: dto.NumberOfGameBans,
+            DaysSinceLastBan: hasAnyBan && dto.DaysSinceLastBan > 0 ? dto.DaysSinceLastBan : null,
+            CommunityBanned: dto.CommunityBanned,
+            EconomyBan: economyBan,
+            IsGoodStanding: !hasAnyBan
+        );
+    }
+
+    private static AccountProgression? BuildAccountProgression(BadgesBody? badges, int? friendCount)
+    {
+        var hasXp = badges?.PlayerXp is not null;
+        var badgeCount = badges?.Badges?.Count;
+
+        if (!hasXp && badgeCount is null && friendCount is null)
+        {
+            return null;
+        }
+
+        double? progress = null;
+        if (badges?.PlayerXp is int xp
+            && badges.PlayerXpNeededCurrentLevel is int floorXp
+            && badges.PlayerXpNeededToLevelUp is int neededToUp)
+        {
+            var earnedInLevel = Math.Max(0, xp - floorXp);
+            var span = earnedInLevel + Math.Max(0, neededToUp);
+            if (span > 0)
+            {
+                progress = Math.Clamp(Math.Round((double)earnedInLevel / span * 100.0, 1), 0, 100);
+            }
+        }
+
+        return new AccountProgression(
+            PlayerXp: badges?.PlayerXp,
+            XpNeededToLevelUp: badges?.PlayerXpNeededToLevelUp,
+            XpNeededCurrentLevel: badges?.PlayerXpNeededCurrentLevel,
+            BadgeCount: badgeCount,
+            FriendCount: friendCount,
+            LevelProgressPercent: progress
+        );
     }
 
     private void CacheProfile(string queryCacheKey, SteamProfileResponse profile)

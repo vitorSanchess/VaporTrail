@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using VaporTrail.Models;
 using VaporTrail.Options;
 using VaporTrail.Services;
 
@@ -80,6 +81,55 @@ public class SteamProfileServiceTests
                 """);
             }
 
+            if (path.Contains("GetBadges"))
+            {
+                return JsonResponse("""
+                {
+                  "response": {
+                    "player_xp": 11420,
+                    "player_level": 42,
+                    "player_xp_needed_to_level_up": 380,
+                    "player_xp_needed_current_level": 11000,
+                    "badges": [
+                      { "badgeid": 1, "level": 5, "xp": 500 },
+                      { "badgeid": 2, "level": 1, "xp": 100 }
+                    ]
+                  }
+                }
+                """);
+            }
+
+            if (path.Contains("GetPlayerBans"))
+            {
+                return JsonResponse("""
+                {
+                  "players": [{
+                    "SteamId": "76561197960435530",
+                    "CommunityBanned": false,
+                    "VACBanned": false,
+                    "NumberOfVACBans": 0,
+                    "DaysSinceLastBan": 0,
+                    "NumberOfGameBans": 0,
+                    "EconomyBan": "none"
+                  }]
+                }
+                """);
+            }
+
+            if (path.Contains("GetFriendList"))
+            {
+                return JsonResponse("""
+                {
+                  "friendslist": {
+                    "friends": [
+                      { "steamid": "76561198000000001" },
+                      { "steamid": "76561198000000002" }
+                    ]
+                  }
+                }
+                """);
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -100,19 +150,30 @@ public class SteamProfileServiceTests
         Assert.Single(first.Profile.RecentlyPlayed);
         Assert.False(first.Profile.FromCache);
         Assert.False(first.Profile.IsDemoData);
-        Assert.Equal(4, requestCount);
+        Assert.NotNull(first.Profile.Standing);
+        Assert.True(first.Profile.Standing.IsGoodStanding);
+        Assert.NotNull(first.Profile.Progression);
+        Assert.Equal(11420, first.Profile.Progression.PlayerXp);
+        Assert.Equal(2, first.Profile.Progression.BadgeCount);
+        Assert.Equal(2, first.Profile.Progression.FriendCount);
+        Assert.Equal(52.5, first.Profile.Progression.LevelProgressPercent);
+        Assert.NotNull(first.Profile.Breakdown);
+        Assert.Equal(2, first.Profile.Breakdown.MatchedGamesCount);
+        Assert.Equal("Action", first.Profile.Breakdown.GenresByPlaytime[0].Name);
+        Assert.Equal("Valve", first.Profile.Breakdown.TopDevelopers[0].Name);
+        Assert.Equal(7, requestCount);
 
         // Second request should hit memory cache without calling Steam API.
         var second = await service.GetProfileAsync(TestSteamId);
         Assert.True(second.IsSuccess);
         Assert.True(second.Profile!.FromCache);
-        Assert.Equal(4, requestCount);
+        Assert.Equal(7, requestCount);
 
         // Refresh should bypass cache and fetch fresh data.
         var refreshed = await service.GetProfileAsync(TestSteamId, bypassCache: true);
         Assert.True(refreshed.IsSuccess);
         Assert.False(refreshed.Profile!.FromCache);
-        Assert.Equal(8, requestCount);
+        Assert.Equal(14, requestCount);
     }
 
     [Fact]
@@ -221,6 +282,71 @@ public class SteamProfileServiceTests
         Assert.True(result.IsSuccess);
         Assert.True(result.Profile!.IsDemoData);
         Assert.Equal("GordonFreeman", result.Profile.PersonaName);
+        Assert.NotNull(result.Profile.Standing);
+        Assert.NotNull(result.Profile.Progression);
+        Assert.NotNull(result.Profile.Breakdown);
+        Assert.NotEmpty(result.Profile.Breakdown.GenresByPlaytime);
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_PrivateFriendListAndVacBan_DegradesGracefullyAndReportsBan()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path.Contains("GetPlayerSummaries"))
+            {
+                return JsonResponse("""
+                {
+                  "response": {
+                    "players": [{
+                      "steamid": "76561198000000099",
+                      "communityvisibilitystate": 3,
+                      "personaname": "FlaggedUser",
+                      "profileurl": "https://steamcommunity.com/profiles/76561198000000099/",
+                      "personastate": 1
+                    }]
+                  }
+                }
+                """);
+            }
+
+            if (path.Contains("GetPlayerBans"))
+            {
+                return JsonResponse("""
+                {
+                  "players": [{
+                    "SteamId": "76561198000000099",
+                    "CommunityBanned": false,
+                    "VACBanned": true,
+                    "NumberOfVACBans": 2,
+                    "DaysSinceLastBan": 410,
+                    "NumberOfGameBans": 1,
+                    "EconomyBan": "none"
+                  }]
+                }
+                """);
+            }
+
+            if (path.Contains("GetFriendList"))
+            {
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            }
+
+            return JsonResponse("""{ "response": {} }""");
+        });
+
+        var service = CreateService(handler, apiKey: TestApiKey);
+        var result = await service.GetProfileAsync("76561198000000099");
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Profile?.Standing);
+        Assert.False(result.Profile.Standing.IsGoodStanding);
+        Assert.True(result.Profile.Standing.VacBanned);
+        Assert.Equal(2, result.Profile.Standing.VacBanCount);
+        Assert.Equal(1, result.Profile.Standing.GameBanCount);
+        Assert.Equal(410, result.Profile.Standing.DaysSinceLastBan);
+        Assert.Null(result.Profile.Progression);
     }
 
     private static SteamProfileService CreateService(HttpMessageHandler handler, string? apiKey)
@@ -237,7 +363,38 @@ public class SteamProfileServiceTests
             CacheDurationMinutes = 5
         });
 
-        return new SteamProfileService(httpClient, cache, options, NullLogger<SteamProfileService>.Instance);
+        return new SteamProfileService(
+            httpClient,
+            cache,
+            new SeedOnlyCatalogService(),
+            options,
+            NullLogger<SteamProfileService>.Instance);
+    }
+
+    private sealed class SeedOnlyCatalogService : ISteamCatalogService
+    {
+        public SteamCatalogStatus GetStatus() => new(false, false, 0, null, null);
+
+        public Task<IReadOnlyDictionary<int, SteamCatalogGame>> GetGamesByAppIdsAsync(
+            IEnumerable<int> appIds,
+            CancellationToken cancellationToken = default)
+        {
+            var map = new Dictionary<int, SteamCatalogGame>();
+            foreach (var id in appIds.Distinct())
+            {
+                if (DemoSteamCatalogSeed.TryGet(id, out var game))
+                {
+                    map[id] = game;
+                }
+            }
+            return Task.FromResult<IReadOnlyDictionary<int, SteamCatalogGame>>(map);
+        }
+
+        public Task<SteamCatalogStatus> SyncFromRemoteAsync(bool force = false, CancellationToken cancellationToken = default) =>
+            Task.FromResult(GetStatus());
+
+        public Task<int> SyncFromStreamAsync(Stream stream, bool isGzip, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
     }
 
     private static HttpResponseMessage JsonResponse(string json) =>

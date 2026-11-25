@@ -1,14 +1,45 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using VaporTrail.Models;
 
 namespace VaporTrail.Tests;
 
-public class ProfileEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public class ProfileEndpointTests(ProfileEndpointTests.VaporTrailAppFactory factory)
+    : IClassFixture<ProfileEndpointTests.VaporTrailAppFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
+
+    public sealed class VaporTrailAppFactory : WebApplicationFactory<Program>
+    {
+        private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"vaportrail-web-{Guid.NewGuid():N}");
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            Directory.CreateDirectory(_tempDir);
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Catalog:AutoSyncOnStartup"] = "false",
+                    ["Catalog:DatabasePath"] = Path.Combine(_tempDir, "test-catalog.sqlite")
+                });
+            });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(_tempDir))
+            {
+                Directory.Delete(_tempDir, recursive: true);
+            }
+        }
+    }
 
     [Fact]
     public async Task RootPage_ReturnsHtmlFrontend()
@@ -19,21 +50,27 @@ public class ProfileEndpointTests(WebApplicationFactory<Program> factory)
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("VaporTrail", html);
         Assert.Contains("theme-toggle", html);
+        Assert.Contains("genre-donut", html);
     }
 
     [Fact]
-    public async Task StatusEndpoint_ReturnsServiceMetadata()
+    public async Task StatusAndCatalogEndpoints_ReturnMetadata()
     {
-        var response = await _client.GetAsync("/api/status");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var status = await response.Content.ReadFromJsonAsync<SteamServiceStatus>();
+        var statusResponse = await _client.GetAsync("/api/status");
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+        var status = await statusResponse.Content.ReadFromJsonAsync<SteamServiceStatus>();
         Assert.NotNull(status);
         Assert.NotEmpty(status.SampleProfiles);
+        Assert.NotNull(status.Catalog);
+
+        var catalogResponse = await _client.GetAsync("/api/catalog/status");
+        Assert.Equal(HttpStatusCode.OK, catalogResponse.StatusCode);
+        var catalogStatus = await catalogResponse.Content.ReadFromJsonAsync<SteamCatalogStatus>();
+        Assert.NotNull(catalogStatus);
     }
 
     [Fact]
-    public async Task ProfileEndpoint_ValidDemoQuery_ReturnsProfile()
+    public async Task ProfileEndpoint_ValidDemoQuery_ReturnsProfileWithStandingAndBreakdown()
     {
         var response = await _client.GetAsync("/api/steam/profile?query=gordonfreeman");
 
@@ -42,6 +79,13 @@ public class ProfileEndpointTests(WebApplicationFactory<Program> factory)
         Assert.NotNull(profile);
         Assert.Equal("GordonFreeman", profile.PersonaName);
         Assert.True(profile.IsDemoData);
+        Assert.NotNull(profile.Standing);
+        Assert.True(profile.Standing.IsGoodStanding);
+        Assert.NotNull(profile.Progression);
+        Assert.NotNull(profile.Breakdown);
+        Assert.NotEmpty(profile.Breakdown.GenresByPlaytime);
+        Assert.NotEmpty(profile.Breakdown.TopDevelopers);
+        Assert.NotEmpty(profile.Breakdown.TopTags);
     }
 
     [Fact]

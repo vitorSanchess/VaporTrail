@@ -23,7 +23,45 @@ public sealed record SteamProfileResponse(
     IReadOnlyList<SteamGameSummary> TopPlayedGames,
     bool IsDemoData,
     bool FromCache,
-    DateTimeOffset FetchedAtUtc
+    DateTimeOffset FetchedAtUtc,
+    AccountStanding? Standing = null,
+    AccountProgression? Progression = null,
+    LibraryBreakdown? Breakdown = null
+);
+
+public sealed record AccountStanding(
+    bool VacBanned,
+    int VacBanCount,
+    int GameBanCount,
+    int? DaysSinceLastBan,
+    bool CommunityBanned,
+    string EconomyBan,
+    bool IsGoodStanding
+);
+
+public sealed record AccountProgression(
+    int? PlayerXp,
+    int? XpNeededToLevelUp,
+    int? XpNeededCurrentLevel,
+    int? BadgeCount,
+    int? FriendCount,
+    double? LevelProgressPercent
+);
+
+public sealed record BreakdownSlice(
+    string Name,
+    double PlaytimeHours,
+    int GameCount,
+    double SharePercent
+);
+
+public sealed record LibraryBreakdown(
+    int AnalyzedGamesCount,
+    int MatchedGamesCount,
+    IReadOnlyList<BreakdownSlice> GenresByPlaytime,
+    IReadOnlyList<BreakdownSlice> GenresByCount,
+    IReadOnlyList<BreakdownSlice> TopTags,
+    IReadOnlyList<BreakdownSlice> TopDevelopers
 );
 
 public sealed record SteamGameSummary(
@@ -45,5 +83,6 @@ public sealed record SteamServiceStatus(
     string Mode,
     bool IsDemoMode,
     int CacheDurationMinutes,
-    IReadOnlyList<SampleProfileHint> SampleProfiles
+    IReadOnlyList<SampleProfileHint> SampleProfiles,
+    SteamCatalogStatus? Catalog = null
 );
