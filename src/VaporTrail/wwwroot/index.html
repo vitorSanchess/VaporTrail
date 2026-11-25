@@ -66,6 +66,10 @@
         <code>dotnet user-secrets set "Steam:ApiKey" "YOUR_KEY" --project src/VaporTrail</code>
         <code>STEAM_API_KEY="YOUR_KEY" dotnet run --project src/VaporTrail</code>
       </div>
+      <div class="catalog-sync-row">
+        <span id="catalog-status-text" class="catalog-status-text">Catalog: checking...</span>
+        <button id="sync-catalog-btn" type="button" class="neu-btn neu-btn-secondary">Sync catalog</button>
+      </div>
     </section>
 
     <main>
@@ -215,6 +219,35 @@
           </div>
         </section>
 
+        <!-- Account Standing & Progression -->
+        <section id="standing-section" class="neu-card standing-card hidden" aria-label="Account standing and progression">
+          <div class="standing-col">
+            <span class="stat-label">Account standing</span>
+            <div class="standing-status-row">
+              <span id="standing-pill" class="standing-pill"></span>
+              <span id="standing-detail" class="standing-detail hidden"></span>
+            </div>
+            <div id="social-counters" class="meta-row hidden">
+              <span id="meta-badges" class="meta-item hidden"></span>
+              <span id="meta-friends" class="meta-item hidden"></span>
+            </div>
+          </div>
+
+          <div id="progression-col" class="progression-col hidden">
+            <div class="xp-header">
+              <strong id="xp-level-label" class="xp-level-label"></strong>
+              <span id="xp-remaining" class="xp-remaining"></span>
+            </div>
+            <div class="xp-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Level XP progress">
+              <div id="xp-fill" class="xp-fill"></div>
+            </div>
+            <div class="xp-footer">
+              <span id="xp-total" class="xp-meta"></span>
+              <span id="xp-percent" class="xp-meta"></span>
+            </div>
+          </div>
+        </section>
+
         <!-- Private Games Notice -->
         <section id="private-games-notice" class="neu-inset private-notice hidden">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -224,6 +257,49 @@
           <div>
             <strong>Game library is private</strong>
             <p>This account hides its games and playtime.</p>
+          </div>
+        </section>
+
+        <!-- Library Breakdown -->
+        <section id="breakdown-section" class="breakdown-section hidden" aria-label="Library breakdown">
+          <div class="breakdown-header">
+            <h3 class="section-heading">Genre breakdown</h3>
+            <div class="breakdown-controls">
+              <div class="segmented-control" role="tablist" aria-label="Genre weighting">
+                <button id="breakdown-playtime" type="button" role="tab" aria-selected="true" class="seg-btn active" data-metric="playtime">
+                  By playtime
+                </button>
+                <button id="breakdown-count" type="button" role="tab" aria-selected="false" class="seg-btn" data-metric="count">
+                  By games
+                </button>
+              </div>
+              <span id="breakdown-coverage" class="games-caption hidden"></span>
+            </div>
+          </div>
+
+          <div class="breakdown-grid">
+            <div class="neu-card donut-card">
+              <div class="donut-stage">
+                <svg id="genre-donut" class="donut-svg" viewBox="0 0 200 200" role="img" aria-label="Genre distribution"></svg>
+                <div class="donut-hole" aria-hidden="true">
+                  <strong id="donut-center-value" class="donut-center-value">--</strong>
+                  <span id="donut-center-label" class="donut-center-label"></span>
+                </div>
+              </div>
+              <div id="genre-list" class="donut-legend"></div>
+            </div>
+
+            <div class="breakdown-side">
+              <div id="developers-card" class="neu-card dev-card hidden">
+                <h3 class="card-heading">Top developers</h3>
+                <div id="developers-list" class="dev-list"></div>
+              </div>
+
+              <div id="tags-card" class="neu-card tags-card hidden">
+                <h3 class="card-heading">Top tags</h3>
+                <div id="tags-list" class="tags-list"></div>
+              </div>
+            </div>
           </div>
         </section>
 

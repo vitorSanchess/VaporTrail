@@ -4,6 +4,14 @@
   const THEME_STORAGE_KEY = "vaportrail-theme";
   const RECENT_STORAGE_KEY = "vaportrail-recent";
   const MAX_RECENT = 5;
+  const CHART_COLORS = [
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)",
+    "var(--chart-6)"
+  ];
 
   const el = {
     themeToggle: document.getElementById("theme-toggle"),
@@ -11,6 +19,8 @@
     modeLabel: document.getElementById("mode-label"),
     apiKeyHelp: document.getElementById("api-key-help"),
     closeHelpBtn: document.getElementById("close-help-btn"),
+    catalogStatusText: document.getElementById("catalog-status-text"),
+    syncCatalogBtn: document.getElementById("sync-catalog-btn"),
 
     searchForm: document.getElementById("search-form"),
     queryInput: document.getElementById("steam-query"),
@@ -49,6 +59,33 @@
     statVisibility: document.getElementById("stat-visibility"),
     statLastSeen: document.getElementById("stat-lastseen"),
 
+    standingSection: document.getElementById("standing-section"),
+    standingPill: document.getElementById("standing-pill"),
+    standingDetail: document.getElementById("standing-detail"),
+    socialCounters: document.getElementById("social-counters"),
+    metaBadges: document.getElementById("meta-badges"),
+    metaFriends: document.getElementById("meta-friends"),
+    progressionCol: document.getElementById("progression-col"),
+    xpLevelLabel: document.getElementById("xp-level-label"),
+    xpRemaining: document.getElementById("xp-remaining"),
+    xpTrack: document.querySelector(".xp-track"),
+    xpFill: document.getElementById("xp-fill"),
+    xpTotal: document.getElementById("xp-total"),
+    xpPercent: document.getElementById("xp-percent"),
+
+    breakdownSection: document.getElementById("breakdown-section"),
+    breakdownPlaytimeBtn: document.getElementById("breakdown-playtime"),
+    breakdownCountBtn: document.getElementById("breakdown-count"),
+    breakdownCoverage: document.getElementById("breakdown-coverage"),
+    genreDonut: document.getElementById("genre-donut"),
+    donutCenterValue: document.getElementById("donut-center-value"),
+    donutCenterLabel: document.getElementById("donut-center-label"),
+    genreList: document.getElementById("genre-list"),
+    developersCard: document.getElementById("developers-card"),
+    developersList: document.getElementById("developers-list"),
+    tagsCard: document.getElementById("tags-card"),
+    tagsList: document.getElementById("tags-list"),
+
     privateNotice: document.getElementById("private-games-notice"),
     gamesSection: document.getElementById("games-section"),
     tabTop: document.getElementById("tab-top"),
@@ -63,6 +100,7 @@
   let currentProfile = null;
   let currentQuery = "";
   let activeGameTab = "top";
+  let breakdownMetric = "playtime";
 
   const regionNames = typeof Intl !== "undefined" && Intl.DisplayNames
     ? new Intl.DisplayNames([navigator.language || "en"], { type: "region" })
@@ -137,6 +175,8 @@
         el.modeLabel.textContent = "Steam API";
       }
 
+      renderCatalogStatus(status.catalog);
+
       if (Array.isArray(status.sampleProfiles) && status.sampleProfiles.length > 0) {
         el.sampleChips.innerHTML = "";
         status.sampleProfiles.forEach((sample) => {
@@ -152,6 +192,45 @@
       }
     } catch {
       el.modeLabel.textContent = "Status unavailable";
+    }
+  }
+
+  function renderCatalogStatus(catalog) {
+    if (!catalog) {
+      el.catalogStatusText.textContent = "Catalog: using built-in seed";
+      return;
+    }
+
+    if (catalog.isSyncing) {
+      el.catalogStatusText.textContent = "Catalog: syncing steamdb dump...";
+      el.syncCatalogBtn.disabled = true;
+      return;
+    }
+
+    el.syncCatalogBtn.disabled = false;
+    if (catalog.isReady && catalog.gameCount > 0) {
+      el.catalogStatusText.textContent = `Catalog: ${formatNumber(catalog.gameCount)} games cached`;
+    } else if (catalog.lastError) {
+      el.catalogStatusText.textContent = `Catalog: using built-in seed (${catalog.lastError})`;
+    } else {
+      el.catalogStatusText.textContent = "Catalog: using built-in seed";
+    }
+  }
+
+  async function syncCatalog() {
+    el.syncCatalogBtn.disabled = true;
+    el.catalogStatusText.textContent = "Catalog: syncing steamdb dump...";
+    try {
+      const res = await fetch("/api/catalog/sync?force=true", { method: "POST" });
+      if (!res.ok) throw new Error("Sync failed");
+      const catalog = await res.json();
+      renderCatalogStatus(catalog);
+      if (currentQuery) {
+        runLookup(currentQuery, { refresh: true });
+      }
+    } catch {
+      el.catalogStatusText.textContent = "Catalog sync failed. Try again later.";
+      el.syncCatalogBtn.disabled = false;
     }
   }
 
@@ -300,11 +379,16 @@
       el.statLastSeen.classList.add("hidden");
     }
 
-    // Private notice vs Games showcase
+    // Standing & Progression
+    renderStanding(p);
+
+    // Private notice vs Breakdown & Games showcase
     const topGames = Array.isArray(p.topPlayedGames) ? p.topPlayedGames : [];
     const recentGames = Array.isArray(p.recentlyPlayed) ? p.recentlyPlayed : [];
 
     el.privateNotice.classList.toggle("hidden", !p.gamesArePrivate);
+
+    renderBreakdown(p);
 
     if (p.gamesArePrivate && recentGames.length === 0) {
       el.gamesSection.classList.add("hidden");
@@ -317,6 +401,307 @@
       activeGameTab = topGames.length > 0 ? "top" : "recent";
       renderGameTab();
     }
+  }
+
+  function renderStanding(p) {
+    const standing = p.standing;
+    const prog = p.progression;
+
+    if (!standing && !prog) {
+      el.standingSection.classList.add("hidden");
+      return;
+    }
+
+    el.standingSection.classList.remove("hidden");
+
+    if (standing) {
+      if (standing.isGoodStanding) {
+        el.standingPill.textContent = "Good standing";
+        el.standingPill.className = "standing-pill is-clean";
+        el.standingDetail.textContent = "";
+        el.standingDetail.classList.add("hidden");
+      } else {
+        const flags = [];
+        if (standing.vacBanCount > 0 || standing.vacBanned) {
+          flags.push(`${standing.vacBanCount || 1} VAC ban${standing.vacBanCount === 1 ? "" : "s"}`);
+        }
+        if (standing.gameBanCount > 0) {
+          flags.push(`${standing.gameBanCount} game ban${standing.gameBanCount === 1 ? "" : "s"}`);
+        }
+        if (standing.communityBanned) {
+          flags.push("Community banned");
+        }
+        if (standing.economyBan && standing.economyBan.toLowerCase() !== "none") {
+          flags.push(`Economy: ${standing.economyBan}`);
+        }
+        el.standingPill.textContent = flags.join(", ") || "Restricted";
+        el.standingPill.className = "standing-pill is-flagged";
+
+        if (typeof standing.daysSinceLastBan === "number") {
+          el.standingDetail.textContent = `${formatNumber(standing.daysSinceLastBan)}d since last ban`;
+          el.standingDetail.classList.remove("hidden");
+        } else {
+          el.standingDetail.textContent = "";
+          el.standingDetail.classList.add("hidden");
+        }
+      }
+    } else {
+      el.standingPill.textContent = "Standing unavailable";
+      el.standingPill.className = "standing-pill";
+      el.standingDetail.classList.add("hidden");
+    }
+
+    let hasSocial = false;
+    if (typeof prog?.badgeCount === "number") {
+      el.metaBadges.textContent = `${formatNumber(prog.badgeCount)} badges`;
+      el.metaBadges.classList.remove("hidden");
+      hasSocial = true;
+    } else {
+      el.metaBadges.classList.add("hidden");
+    }
+
+    if (typeof prog?.friendCount === "number") {
+      el.metaFriends.textContent = `${formatNumber(prog.friendCount)} friends`;
+      el.metaFriends.classList.remove("hidden");
+      hasSocial = true;
+    } else {
+      el.metaFriends.classList.add("hidden");
+    }
+    el.socialCounters.classList.toggle("hidden", !hasSocial);
+
+    if (prog && typeof prog.playerXp === "number") {
+      const level = typeof p.steamLevel === "number" ? p.steamLevel : null;
+      el.xpLevelLabel.textContent = level !== null ? `Level ${level} to ${level + 1}` : "XP progress";
+      el.xpRemaining.textContent = typeof prog.xpNeededToLevelUp === "number"
+        ? `${formatNumber(prog.xpNeededToLevelUp)} XP needed`
+        : "";
+
+      const pct = typeof prog.levelProgressPercent === "number"
+        ? Math.max(0, Math.min(100, prog.levelProgressPercent))
+        : 0;
+      el.xpFill.style.width = `${pct}%`;
+      el.xpTrack.setAttribute("aria-valuenow", String(pct));
+      el.xpTotal.textContent = `${formatNumber(prog.playerXp)} XP`;
+      el.xpPercent.textContent = `${pct}%`;
+      el.progressionCol.classList.remove("hidden");
+    } else {
+      el.progressionCol.classList.add("hidden");
+    }
+  }
+
+  function renderBreakdown(p) {
+    const bd = p.breakdown;
+    if (!bd || p.gamesArePrivate) {
+      el.breakdownSection.classList.add("hidden");
+      return;
+    }
+
+    const slices = breakdownMetric === "playtime" ? bd.genresByPlaytime : bd.genresByCount;
+    if (!Array.isArray(slices) || slices.length === 0) {
+      el.breakdownSection.classList.add("hidden");
+      return;
+    }
+
+    el.breakdownSection.classList.remove("hidden");
+
+    const isPlaytime = breakdownMetric === "playtime";
+    el.breakdownPlaytimeBtn.classList.toggle("active", isPlaytime);
+    el.breakdownPlaytimeBtn.setAttribute("aria-selected", String(isPlaytime));
+    el.breakdownCountBtn.classList.toggle("active", !isPlaytime);
+    el.breakdownCountBtn.setAttribute("aria-selected", String(!isPlaytime));
+
+    if (bd.matchedGamesCount < bd.analyzedGamesCount) {
+      el.breakdownCoverage.textContent = `${formatNumber(bd.matchedGamesCount)} of ${formatNumber(bd.analyzedGamesCount)} games matched`;
+      el.breakdownCoverage.classList.remove("hidden");
+    } else {
+      el.breakdownCoverage.textContent = "";
+      el.breakdownCoverage.classList.add("hidden");
+    }
+
+    renderGenreDonut(slices, breakdownMetric);
+    renderDevelopers(bd.topDevelopers || []);
+    renderTags(bd.topTags || []);
+  }
+
+  function renderGenreDonut(slices, mode) {
+    const svgNs = "http://www.w3.org/2000/svg";
+    el.genreDonut.innerHTML = "";
+    el.genreDonut.classList.remove("has-focus");
+    el.genreList.innerHTML = "";
+
+    const radius = 74;
+    const circumference = 2 * Math.PI * radius;
+    const gap = slices.length > 1 ? 2.5 : 0;
+
+    const totalShare = slices.reduce((sum, s) => sum + (s.sharePercent || 0), 0) || 100;
+    const totalHours = slices.reduce((sum, s) => sum + (s.playtimeHours || 0), 0);
+    const totalCount = slices.reduce((sum, s) => sum + (s.gameCount || 0), 0);
+
+    const defaultValue = mode === "playtime"
+      ? `${formatHours(totalHours)}h`
+      : formatNumber(totalCount);
+    const defaultLabel = mode === "playtime" ? "genre hours" : "genre tags";
+
+    el.donutCenterValue.textContent = defaultValue;
+    el.donutCenterLabel.textContent = defaultLabel;
+
+    let offset = 0;
+    const sliceEls = [];
+    const rowEls = [];
+
+    function setActive(index) {
+      const hasFocus = index >= 0;
+      el.genreDonut.classList.toggle("has-focus", hasFocus);
+      sliceEls.forEach((s, i) => s.classList.toggle("is-active", i === index));
+      rowEls.forEach((r, i) => r.classList.toggle("is-active", i === index));
+
+      if (hasFocus) {
+        const s = slices[index];
+        el.donutCenterValue.textContent = `${s.sharePercent}%`;
+        el.donutCenterLabel.textContent = s.name;
+      } else {
+        el.donutCenterValue.textContent = defaultValue;
+        el.donutCenterLabel.textContent = defaultLabel;
+      }
+    }
+
+    slices.forEach((slice, idx) => {
+      const color = CHART_COLORS[idx % CHART_COLORS.length];
+      const fraction = (slice.sharePercent || 0) / totalShare;
+      const rawLength = fraction * circumference;
+      const visibleLength = Math.max(0, rawLength - gap);
+
+      const circle = document.createElementNS(svgNs, "circle");
+      circle.setAttribute("class", "donut-slice");
+      circle.setAttribute("cx", "100");
+      circle.setAttribute("cy", "100");
+      circle.setAttribute("r", String(radius));
+      circle.setAttribute("stroke", color);
+      circle.setAttribute("stroke-dasharray", `${visibleLength} ${circumference - visibleLength}`);
+      circle.setAttribute("stroke-dashoffset", String(-offset));
+      circle.setAttribute("transform", "rotate(-90 100 100)");
+      circle.setAttribute("tabindex", "0");
+      circle.setAttribute("aria-label", `${slice.name}: ${slice.sharePercent}%`);
+
+      circle.addEventListener("mouseenter", () => setActive(idx));
+      circle.addEventListener("mouseleave", () => setActive(-1));
+      circle.addEventListener("focus", () => setActive(idx));
+      circle.addEventListener("blur", () => setActive(-1));
+
+      el.genreDonut.appendChild(circle);
+      sliceEls.push(circle);
+      offset += rawLength;
+
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "legend-row";
+
+      const swatch = document.createElement("span");
+      swatch.className = "legend-swatch";
+      swatch.style.backgroundColor = color;
+
+      const name = document.createElement("span");
+      name.className = "legend-name";
+      name.textContent = slice.name;
+
+      const metric = document.createElement("span");
+      metric.className = "legend-metric";
+      metric.textContent = mode === "playtime"
+        ? `${formatHours(slice.playtimeHours)}h`
+        : `${formatNumber(slice.gameCount)}g`;
+
+      const share = document.createElement("span");
+      share.className = "legend-share";
+      share.textContent = `${slice.sharePercent}%`;
+
+      row.appendChild(swatch);
+      row.appendChild(name);
+      row.appendChild(metric);
+      row.appendChild(share);
+
+      row.addEventListener("mouseenter", () => setActive(idx));
+      row.addEventListener("mouseleave", () => setActive(-1));
+      row.addEventListener("focus", () => setActive(idx));
+      row.addEventListener("blur", () => setActive(-1));
+
+      el.genreList.appendChild(row);
+      rowEls.push(row);
+    });
+  }
+
+  function renderDevelopers(developers) {
+    el.developersList.innerHTML = "";
+    if (!Array.isArray(developers) || developers.length === 0) {
+      el.developersCard.classList.add("hidden");
+      return;
+    }
+
+    el.developersCard.classList.remove("hidden");
+    const maxHours = Math.max(...developers.map((d) => d.playtimeHours || 0));
+    const maxCount = Math.max(...developers.map((d) => d.gameCount || 0));
+    const useHours = maxHours > 0;
+    const maxVal = useHours ? maxHours : Math.max(1, maxCount);
+
+    developers.forEach((dev) => {
+      const row = document.createElement("div");
+      row.className = "dev-row";
+
+      const top = document.createElement("div");
+      top.className = "dev-row-top";
+
+      const name = document.createElement("span");
+      name.className = "dev-name";
+      name.textContent = dev.name;
+
+      const metric = document.createElement("span");
+      metric.className = "dev-metric";
+      metric.textContent = useHours
+        ? `${formatHours(dev.playtimeHours)}h`
+        : `${formatNumber(dev.gameCount)} games`;
+
+      top.appendChild(name);
+      top.appendChild(metric);
+
+      const track = document.createElement("div");
+      track.className = "bar-track";
+
+      const fill = document.createElement("div");
+      fill.className = "bar-fill";
+      const val = useHours ? dev.playtimeHours : dev.gameCount;
+      fill.style.width = `${Math.max(4, Math.round((val / maxVal) * 100))}%`;
+
+      track.appendChild(fill);
+      row.appendChild(top);
+      row.appendChild(track);
+      el.developersList.appendChild(row);
+    });
+  }
+
+  function renderTags(tags) {
+    el.tagsList.innerHTML = "";
+    if (!Array.isArray(tags) || tags.length === 0) {
+      el.tagsCard.classList.add("hidden");
+      return;
+    }
+
+    el.tagsCard.classList.remove("hidden");
+    tags.forEach((tag) => {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+
+      const label = document.createElement("span");
+      label.textContent = tag.name;
+
+      const metric = document.createElement("span");
+      metric.className = "tag-chip-metric";
+      metric.textContent = tag.playtimeHours > 0
+        ? `${formatHours(tag.playtimeHours)}h`
+        : `${formatNumber(tag.gameCount)}`;
+
+      chip.appendChild(label);
+      chip.appendChild(metric);
+      el.tagsList.appendChild(chip);
+    });
   }
 
   function renderGameTab() {
@@ -503,6 +888,18 @@
     activeGameTab = "recent";
     renderGameTab();
   });
+
+  el.breakdownPlaytimeBtn.addEventListener("click", () => {
+    breakdownMetric = "playtime";
+    if (currentProfile) renderBreakdown(currentProfile);
+  });
+
+  el.breakdownCountBtn.addEventListener("click", () => {
+    breakdownMetric = "count";
+    if (currentProfile) renderBreakdown(currentProfile);
+  });
+
+  el.syncCatalogBtn.addEventListener("click", syncCatalog);
 
   // ========== Boot ==========
   syncThemeSwitch();
