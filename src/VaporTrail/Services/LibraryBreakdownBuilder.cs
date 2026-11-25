@@ -62,6 +62,14 @@ public static partial class LibraryBreakdownBuilder
         var topTags = BuildTopSlices(
             tagBuckets,
             MaxTagSlices,
+            byPlaytime: true,
+            matchedPlaytimeTotal,
+            matchedCount);
+
+        var topTagsByCount = BuildTopSlices(
+            tagBuckets,
+            MaxTagSlices,
+            byPlaytime: false,
             matchedPlaytimeTotal,
             matchedCount);
 
@@ -70,6 +78,14 @@ public static partial class LibraryBreakdownBuilder
         var topDevelopers = BuildTopSlices(
             devBuckets,
             MaxDeveloperSlices,
+            byPlaytime: true,
+            devTotalHours,
+            devTotalCount);
+
+        var topDevelopersByCount = BuildTopSlices(
+            devBuckets,
+            MaxDeveloperSlices,
+            byPlaytime: false,
             devTotalHours,
             devTotalCount);
 
@@ -79,7 +95,9 @@ public static partial class LibraryBreakdownBuilder
             GenresByPlaytime: genresByPlaytime,
             GenresByCount: genresByCount,
             TopTags: topTags,
-            TopDevelopers: topDevelopers
+            TopDevelopers: topDevelopers,
+            TopTagsByCount: topTagsByCount,
+            TopDevelopersByCount: topDevelopersByCount
         );
     }
 
@@ -174,6 +192,7 @@ public static partial class LibraryBreakdownBuilder
     private static List<BreakdownSlice> BuildTopSlices(
         Dictionary<string, (double Hours, int Count)> buckets,
         int limit,
+        bool byPlaytime,
         double denominatorHours,
         int denominatorCount)
     {
@@ -182,13 +201,20 @@ public static partial class LibraryBreakdownBuilder
             return [];
         }
 
-        var useHours = denominatorHours > 0;
+        var useHours = byPlaytime && denominatorHours > 0;
         var denominator = useHours ? denominatorHours : denominatorCount;
 
-        return buckets
-            .OrderByDescending(kv => kv.Value.Hours)
-            .ThenByDescending(kv => kv.Value.Count)
-            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+        var ordered = useHours
+            ? buckets
+                .OrderByDescending(kv => kv.Value.Hours)
+                .ThenByDescending(kv => kv.Value.Count)
+                .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            : buckets
+                .OrderByDescending(kv => kv.Value.Count)
+                .ThenByDescending(kv => kv.Value.Hours)
+                .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase);
+
+        return ordered
             .Take(limit)
             .Select(kv =>
             {

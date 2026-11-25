@@ -123,6 +123,40 @@ public class LibraryBreakdownBuilderTests
         Assert.Equal(1, breakdown.TopDevelopers[2].GameCount);
     }
 
+    [Fact]
+    public void Build_OrdersTopDevelopersAndTagsByCountSeparatelyFromPlaytime()
+    {
+        var owned = new List<(int AppId, double PlaytimeHours)>
+        {
+            (1, 500),
+            (2, 10),
+            (3, 10),
+            (4, 10)
+        };
+
+        var catalog = new Dictionary<int, SteamCatalogGame>
+        {
+            [1] = Meta(1, ["Action"], ["FPS"], ["Studio A"]),
+            [2] = Meta(2, ["Indie"], ["Roguelike"], ["Studio B"]),
+            [3] = Meta(3, ["Indie"], ["Roguelike"], ["Studio B"]),
+            [4] = Meta(4, ["Indie"], ["Roguelike"], ["Studio B"])
+        };
+
+        var breakdown = LibraryBreakdownBuilder.Build(owned, catalog);
+
+        Assert.NotNull(breakdown);
+        Assert.Equal("Studio A", breakdown.TopDevelopers[0].Name);
+        Assert.Equal("FPS", breakdown.TopTags[0].Name);
+
+        Assert.NotNull(breakdown.TopDevelopersByCount);
+        Assert.Equal("Studio B", breakdown.TopDevelopersByCount[0].Name);
+        Assert.Equal(3, breakdown.TopDevelopersByCount[0].GameCount);
+
+        Assert.NotNull(breakdown.TopTagsByCount);
+        Assert.Equal("Roguelike", breakdown.TopTagsByCount[0].Name);
+        Assert.Equal(3, breakdown.TopTagsByCount[0].GameCount);
+    }
+
     private static SteamCatalogGame Meta(int appId, string[] genres, string[] tags, string[] devs) =>
         new(appId, $"Game {appId}", genres, tags, devs, devs, null, null, null, null, null, null, null);
 }

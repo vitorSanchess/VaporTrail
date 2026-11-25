@@ -519,8 +519,14 @@
     }
 
     renderGenreDonut(slices, breakdownMetric);
-    renderDevelopers(bd.topDevelopers || []);
-    renderTags(bd.topTags || []);
+    const developers = isPlaytime
+      ? (bd.topDevelopers || [])
+      : (bd.topDevelopersByCount || bd.topDevelopers || []);
+    const tags = isPlaytime
+      ? (bd.topTags || [])
+      : (bd.topTagsByCount || bd.topTags || []);
+    renderDevelopers(developers, breakdownMetric);
+    renderTags(tags, breakdownMetric);
   }
 
   function renderGenreDonut(slices, mode) {
@@ -629,7 +635,7 @@
     });
   }
 
-  function renderDevelopers(developers) {
+  function renderDevelopers(developers, mode) {
     el.developersList.innerHTML = "";
     if (!Array.isArray(developers) || developers.length === 0) {
       el.developersCard.classList.add("hidden");
@@ -639,7 +645,7 @@
     el.developersCard.classList.remove("hidden");
     const maxHours = Math.max(...developers.map((d) => d.playtimeHours || 0));
     const maxCount = Math.max(...developers.map((d) => d.gameCount || 0));
-    const useHours = maxHours > 0;
+    const useHours = mode === "playtime" && maxHours > 0;
     const maxVal = useHours ? maxHours : Math.max(1, maxCount);
 
     developers.forEach((dev) => {
@@ -657,7 +663,7 @@
       metric.className = "dev-metric";
       metric.textContent = useHours
         ? `${formatHours(dev.playtimeHours)}h`
-        : `${formatNumber(dev.gameCount)} games`;
+        : `${formatNumber(dev.gameCount)} ${dev.gameCount === 1 ? "game" : "games"}`;
 
       top.appendChild(name);
       top.appendChild(metric);
@@ -677,7 +683,7 @@
     });
   }
 
-  function renderTags(tags) {
+  function renderTags(tags, mode) {
     el.tagsList.innerHTML = "";
     if (!Array.isArray(tags) || tags.length === 0) {
       el.tagsCard.classList.add("hidden");
@@ -694,9 +700,12 @@
 
       const metric = document.createElement("span");
       metric.className = "tag-chip-metric";
-      metric.textContent = tag.playtimeHours > 0
-        ? `${formatHours(tag.playtimeHours)}h`
-        : `${formatNumber(tag.gameCount)}`;
+      if (mode === "playtime" && tag.playtimeHours > 0) {
+        metric.textContent = `${formatHours(tag.playtimeHours)}h`;
+      } else {
+        metric.textContent = formatNumber(tag.gameCount);
+        chip.title = `${formatNumber(tag.gameCount)} ${tag.gameCount === 1 ? "game" : "games"}`;
+      }
 
       chip.appendChild(label);
       chip.appendChild(metric);

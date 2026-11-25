@@ -61,7 +61,9 @@ public sealed record LibraryBreakdown(
     IReadOnlyList<BreakdownSlice> GenresByPlaytime,
     IReadOnlyList<BreakdownSlice> GenresByCount,
     IReadOnlyList<BreakdownSlice> TopTags,
-    IReadOnlyList<BreakdownSlice> TopDevelopers
+    IReadOnlyList<BreakdownSlice> TopDevelopers,
+    IReadOnlyList<BreakdownSlice>? TopTagsByCount = null,
+    IReadOnlyList<BreakdownSlice>? TopDevelopersByCount = null
 );
 
 public sealed record SteamGameSummary(
