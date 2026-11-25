@@ -50,3 +50,14 @@ dotnet test
 - `GET /api/catalog/status` — Local SQLite catalog readiness, cached game count, and last sync timestamp.
 - `POST /api/catalog/sync?force=<true|false>` — Triggers an on-demand sync from the nightly `leinstay/steamdb` dump.
 - `GET /api/health` — Basic health check.
+
+## Deploy on Render
+
+This repo includes [Dockerfile](Dockerfile) and a [render.yaml](render.yaml) Blueprint for Render:
+
+1. Push the repository to GitHub.
+2. In the Render dashboard, select **New + -> Blueprint** and choose your `VaporTrail` repository.
+3. When prompted for `STEAM_API_KEY`, paste your Steam Web API key (or leave it blank to deploy in Demo Mode).
+4. Render builds the `.NET 10` container, binds to `PORT`, and verifies `/api/health`.
+
+> **Note:** Render's Free tier uses an ephemeral filesystem, so the app starts immediately with the built-in seed and re-syncs the `steamdb` SQLite cache in the background on cold starts. If you upgrade to a paid Render plan with a Persistent Disk mounted at `/var/data`, set `Catalog__DatabasePath=/var/data/steamdb.sqlite`.

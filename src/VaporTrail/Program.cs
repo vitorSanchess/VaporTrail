@@ -4,6 +4,13 @@ using VaporTrail.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port)
+    && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 builder.Services.Configure<SteamOptions>(options =>
 {
     builder.Configuration.GetSection(SteamOptions.SectionName).Bind(options);

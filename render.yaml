@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: vaportrail
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Catalog__DatabasePath
+        value: /app/App_Data/steamdb.sqlite
+      - key: Catalog__AutoSyncOnStartup
+        value: "true"
+      - key: STEAM_API_KEY
+        sync: false

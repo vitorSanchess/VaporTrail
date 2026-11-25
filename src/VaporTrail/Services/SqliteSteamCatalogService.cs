@@ -225,103 +225,126 @@ public sealed class SqliteSteamCatalogService : ISteamCatalogService, IDisposabl
 
         await using (var pragmaCmd = conn.CreateCommand())
         {
-            pragmaCmd.CommandText = "PRAGMA synchronous = NORMAL; PRAGMA temp_store = MEMORY;";
+            pragmaCmd.CommandText = "PRAGMA synchronous = NORMAL; PRAGMA cache_size = -8000;";
             await pragmaCmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(cancellationToken);
-
-        await using var upsertCmd = conn.CreateCommand();
-        upsertCmd.Transaction = tx;
-        upsertCmd.CommandText = """
-            INSERT INTO games (
-                app_id, name, genres_json, tags_json, developers_json, publishers_json,
-                release_date, price_usd, price_final_usd, steam_reviews_percent,
-                metacritic_score, hltb_main_hours, average_playtime_hours
-            ) VALUES (
-                $appId, $name, $genres, $tags, $developers, $publishers,
-                $releaseDate, $priceUsd, $priceFinalUsd, $reviewsPercent,
-                $metacritic, $hltbMain, $avgPlaytime
-            )
-            ON CONFLICT(app_id) DO UPDATE SET
-                name = excluded.name,
-                genres_json = excluded.genres_json,
-                tags_json = excluded.tags_json,
-                developers_json = excluded.developers_json,
-                publishers_json = excluded.publishers_json,
-                release_date = excluded.release_date,
-                price_usd = excluded.price_usd,
-                price_final_usd = excluded.price_final_usd,
-                steam_reviews_percent = excluded.steam_reviews_percent,
-                metacritic_score = excluded.metacritic_score,
-                hltb_main_hours = excluded.hltb_main_hours,
-                average_playtime_hours = excluded.average_playtime_hours;
-            """;
-
-        var pAppId = upsertCmd.Parameters.Add("$appId", SqliteType.Integer);
-        var pName = upsertCmd.Parameters.Add("$name", SqliteType.Text);
-        var pGenres = upsertCmd.Parameters.Add("$genres", SqliteType.Text);
-        var pTags = upsertCmd.Parameters.Add("$tags", SqliteType.Text);
-        var pDevelopers = upsertCmd.Parameters.Add("$developers", SqliteType.Text);
-        var pPublishers = upsertCmd.Parameters.Add("$publishers", SqliteType.Text);
-        var pReleaseDate = upsertCmd.Parameters.Add("$releaseDate", SqliteType.Text);
-        var pPriceUsd = upsertCmd.Parameters.Add("$priceUsd", SqliteType.Integer);
-        var pPriceFinalUsd = upsertCmd.Parameters.Add("$priceFinalUsd", SqliteType.Integer);
-        var pReviewsPercent = upsertCmd.Parameters.Add("$reviewsPercent", SqliteType.Integer);
-        var pMetacritic = upsertCmd.Parameters.Add("$metacritic", SqliteType.Integer);
-        var pHltbMain = upsertCmd.Parameters.Add("$hltbMain", SqliteType.Real);
-        var pAvgPlaytime = upsertCmd.Parameters.Add("$avgPlaytime", SqliteType.Real);
-
-        await upsertCmd.PrepareAsync(cancellationToken);
-
+        const int commitBatchSize = 5000;
         var imported = 0;
-
-        await foreach (var entry in JsonSerializer.DeserializeAsyncEnumerable<SteamDbRawEntry>(
-            jsonStream, JsonOptions, cancellationToken))
-        {
-            if (entry?.SteamAppId is not > 0)
-            {
-                continue;
-            }
-
-            pAppId.Value = entry.SteamAppId.Value;
-            pName.Value = entry.Name ?? $"App {entry.SteamAppId.Value}";
-            pGenres.Value = SerializeNormalizedList(entry.Genres);
-            pTags.Value = SerializeNormalizedList(entry.Tags);
-            pDevelopers.Value = SerializeNormalizedList(entry.Developers);
-            pPublishers.Value = SerializeNormalizedList(entry.Publishers);
-            pReleaseDate.Value = (object?)entry.ReleaseDate ?? DBNull.Value;
-            pPriceUsd.Value = (object?)entry.PriceUsd ?? DBNull.Value;
-            pPriceFinalUsd.Value = (object?)entry.PriceFinalUsd ?? DBNull.Value;
-            pReviewsPercent.Value = (object?)entry.SteamReviewsPercent ?? DBNull.Value;
-            pMetacritic.Value = (object?)entry.MetacriticScore ?? DBNull.Value;
-            pHltbMain.Value = (object?)entry.HltbMainHours ?? DBNull.Value;
-            pAvgPlaytime.Value = (object?)entry.AveragePlaytimeHours ?? DBNull.Value;
-
-            await upsertCmd.ExecuteNonQueryAsync(cancellationToken);
-            imported++;
-        }
-
+        var totalRows = 0;
         var syncedAt = DateTimeOffset.UtcNow;
 
-        await using var countCmd = conn.CreateCommand();
-        countCmd.Transaction = tx;
-        countCmd.CommandText = "SELECT COUNT(*) FROM games;";
-        var totalRows = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
+        var tx = (SqliteTransaction)await conn.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var upsertCmd = conn.CreateCommand();
+            upsertCmd.Transaction = tx;
+            upsertCmd.CommandText = """
+                INSERT INTO games (
+                    app_id, name, genres_json, tags_json, developers_json, publishers_json,
+                    release_date, price_usd, price_final_usd, steam_reviews_percent,
+                    metacritic_score, hltb_main_hours, average_playtime_hours
+                ) VALUES (
+                    $appId, $name, $genres, $tags, $developers, $publishers,
+                    $releaseDate, $priceUsd, $priceFinalUsd, $reviewsPercent,
+                    $metacritic, $hltbMain, $avgPlaytime
+                )
+                ON CONFLICT(app_id) DO UPDATE SET
+                    name = excluded.name,
+                    genres_json = excluded.genres_json,
+                    tags_json = excluded.tags_json,
+                    developers_json = excluded.developers_json,
+                    publishers_json = excluded.publishers_json,
+                    release_date = excluded.release_date,
+                    price_usd = excluded.price_usd,
+                    price_final_usd = excluded.price_final_usd,
+                    steam_reviews_percent = excluded.steam_reviews_percent,
+                    metacritic_score = excluded.metacritic_score,
+                    hltb_main_hours = excluded.hltb_main_hours,
+                    average_playtime_hours = excluded.average_playtime_hours;
+                """;
 
-        await using var metaCmd = conn.CreateCommand();
-        metaCmd.Transaction = tx;
-        metaCmd.CommandText = """
-            INSERT INTO catalog_meta (key, value) VALUES ('synced_at_utc', $syncedAt)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-            INSERT INTO catalog_meta (key, value) VALUES ('row_count', $rowCount)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-            """;
-        metaCmd.Parameters.AddWithValue("$syncedAt", syncedAt.ToString("O"));
-        metaCmd.Parameters.AddWithValue("$rowCount", totalRows.ToString());
-        await metaCmd.ExecuteNonQueryAsync(cancellationToken);
+            var pAppId = upsertCmd.Parameters.Add("$appId", SqliteType.Integer);
+            var pName = upsertCmd.Parameters.Add("$name", SqliteType.Text);
+            var pGenres = upsertCmd.Parameters.Add("$genres", SqliteType.Text);
+            var pTags = upsertCmd.Parameters.Add("$tags", SqliteType.Text);
+            var pDevelopers = upsertCmd.Parameters.Add("$developers", SqliteType.Text);
+            var pPublishers = upsertCmd.Parameters.Add("$publishers", SqliteType.Text);
+            var pReleaseDate = upsertCmd.Parameters.Add("$releaseDate", SqliteType.Text);
+            var pPriceUsd = upsertCmd.Parameters.Add("$priceUsd", SqliteType.Integer);
+            var pPriceFinalUsd = upsertCmd.Parameters.Add("$priceFinalUsd", SqliteType.Integer);
+            var pReviewsPercent = upsertCmd.Parameters.Add("$reviewsPercent", SqliteType.Integer);
+            var pMetacritic = upsertCmd.Parameters.Add("$metacritic", SqliteType.Integer);
+            var pHltbMain = upsertCmd.Parameters.Add("$hltbMain", SqliteType.Real);
+            var pAvgPlaytime = upsertCmd.Parameters.Add("$avgPlaytime", SqliteType.Real);
 
-        await tx.CommitAsync(cancellationToken);
+            await upsertCmd.PrepareAsync(cancellationToken);
+
+            await foreach (var entry in JsonSerializer.DeserializeAsyncEnumerable<SteamDbRawEntry>(
+                jsonStream, JsonOptions, cancellationToken))
+            {
+                if (entry?.SteamAppId is not > 0)
+                {
+                    continue;
+                }
+
+                pAppId.Value = entry.SteamAppId.Value;
+                pName.Value = entry.Name ?? $"App {entry.SteamAppId.Value}";
+                pGenres.Value = SerializeNormalizedList(entry.Genres);
+                pTags.Value = SerializeNormalizedList(entry.Tags);
+                pDevelopers.Value = SerializeNormalizedList(entry.Developers);
+                pPublishers.Value = SerializeNormalizedList(entry.Publishers);
+                pReleaseDate.Value = (object?)entry.ReleaseDate ?? DBNull.Value;
+                pPriceUsd.Value = (object?)entry.PriceUsd ?? DBNull.Value;
+                pPriceFinalUsd.Value = (object?)entry.PriceFinalUsd ?? DBNull.Value;
+                pReviewsPercent.Value = (object?)entry.SteamReviewsPercent ?? DBNull.Value;
+                pMetacritic.Value = (object?)entry.MetacriticScore ?? DBNull.Value;
+                pHltbMain.Value = (object?)entry.HltbMainHours ?? DBNull.Value;
+                pAvgPlaytime.Value = (object?)entry.AveragePlaytimeHours ?? DBNull.Value;
+
+                await upsertCmd.ExecuteNonQueryAsync(cancellationToken);
+                imported++;
+
+                if (imported % commitBatchSize == 0)
+                {
+                    await tx.CommitAsync(cancellationToken);
+                    await tx.DisposeAsync();
+                    tx = (SqliteTransaction)await conn.BeginTransactionAsync(cancellationToken);
+                    upsertCmd.Transaction = tx;
+                }
+            }
+
+            syncedAt = DateTimeOffset.UtcNow;
+
+            await using var countCmd = conn.CreateCommand();
+            countCmd.Transaction = tx;
+            countCmd.CommandText = "SELECT COUNT(*) FROM games;";
+            totalRows = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
+
+            await using var metaCmd = conn.CreateCommand();
+            metaCmd.Transaction = tx;
+            metaCmd.CommandText = """
+                INSERT INTO catalog_meta (key, value) VALUES ('synced_at_utc', $syncedAt)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                INSERT INTO catalog_meta (key, value) VALUES ('row_count', $rowCount)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                """;
+            metaCmd.Parameters.AddWithValue("$syncedAt", syncedAt.ToString("O"));
+            metaCmd.Parameters.AddWithValue("$rowCount", totalRows.ToString());
+            await metaCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            await tx.CommitAsync(cancellationToken);
+        }
+        finally
+        {
+            await tx.DisposeAsync();
+        }
+
+        await using (var checkpointCmd = conn.CreateCommand())
+        {
+            checkpointCmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            await checkpointCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
 
         _gameCount = totalRows;
         _syncedAtUtc = syncedAt;

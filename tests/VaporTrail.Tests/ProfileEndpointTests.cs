@@ -24,6 +24,8 @@ public class ProfileEndpointTests(ProfileEndpointTests.VaporTrailAppFactory fact
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
+                    ["Steam:ApiKey"] = "",
+                    ["STEAM_API_KEY"] = "",
                     ["Catalog:AutoSyncOnStartup"] = "false",
                     ["Catalog:DatabasePath"] = Path.Combine(_tempDir, "test-catalog.sqlite")
                 });
