@@ -19,8 +19,28 @@ builder.Services.Configure<SteamOptions>(options =>
     }
 });
 
+builder.Services.Configure<CatalogOptions>(
+    builder.Configuration.GetSection(CatalogOptions.SectionName));
+
 builder.Services.AddMemoryCache();
 builder.Services.AddProblemDetails();
+
+builder.Services.AddHttpClient("SteamCatalog", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(3);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("VaporTrail/1.0");
+});
+
+builder.Services.AddSingleton<ISteamCatalogService>(sp =>
+{
+    var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("SteamCatalog");
+    var options = sp.GetRequiredService<IOptions<CatalogOptions>>();
+    var env = sp.GetRequiredService<IHostEnvironment>();
+    var logger = sp.GetRequiredService<ILogger<SqliteSteamCatalogService>>();
+    return new SqliteSteamCatalogService(httpClient, options, env, logger);
+});
+
+builder.Services.AddHostedService<SteamCatalogSyncHostedService>();
 
 builder.Services.AddHttpClient<ISteamProfileService, SteamProfileService>((sp, client) =>
 {
@@ -45,6 +65,18 @@ api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 api.MapGet("/status", (ISteamProfileService steamService) =>
     Results.Ok(steamService.GetStatus()));
+
+api.MapGet("/catalog/status", (ISteamCatalogService catalogService) =>
+    Results.Ok(catalogService.GetStatus()));
+
+api.MapPost("/catalog/sync", async (
+    bool? force,
+    ISteamCatalogService catalogService,
+    CancellationToken cancellationToken) =>
+{
+    var status = await catalogService.SyncFromRemoteAsync(force ?? false, cancellationToken);
+    return Results.Ok(status);
+});
 
 api.MapGet("/steam/profile", async (
     string? query,
