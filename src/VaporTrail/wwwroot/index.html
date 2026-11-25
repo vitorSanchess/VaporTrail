@@ -248,6 +248,54 @@
           </div>
         </section>
 
+        <!-- Backlog & Engagement -->
+        <section id="engagement-section" class="engagement-section hidden" aria-label="Backlog and engagement">
+          <div class="engagement-header">
+            <h3 class="section-heading">Backlog &amp; engagement</h3>
+            <span id="engagement-summary" class="games-caption"></span>
+          </div>
+
+          <div class="engagement-grid">
+            <div class="neu-card engagement-card">
+              <div class="engagement-metrics">
+                <div class="engagement-stat">
+                  <span class="stat-label">Unplayed</span>
+                  <strong id="eng-unplayed-pct" class="engagement-stat-value">--</strong>
+                  <span id="eng-unplayed-count" class="stat-sub"></span>
+                </div>
+
+                <div class="engagement-stat">
+                  <span class="stat-label">Top 3 share</span>
+                  <strong id="eng-top3-share" class="engagement-stat-value">--</strong>
+                  <span id="eng-top3-hours" class="stat-sub"></span>
+                </div>
+
+                <div class="engagement-stat">
+                  <span class="stat-label">Median played</span>
+                  <strong id="eng-median-hours" class="engagement-stat-value">--</strong>
+                  <span class="stat-sub">Among played games</span>
+                </div>
+              </div>
+
+              <div class="depth-block">
+                <span class="card-heading">Playtime depth</span>
+                <div id="depth-track" class="depth-track" role="img" aria-label="Playtime depth distribution"></div>
+                <div id="depth-legend" class="depth-legend"></div>
+              </div>
+            </div>
+
+            <div class="neu-card backlog-card">
+              <h3 class="card-heading">Backlog estimate</h3>
+              <strong id="backlog-hours" class="backlog-value">--</strong>
+              <p id="backlog-sub" class="backlog-sub"></p>
+              <div id="backlog-picks-wrap" class="backlog-picks-wrap hidden">
+                <span class="backlog-picks-label">Quickest to finish</span>
+                <div id="backlog-picks" class="backlog-picks"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Private Games Notice -->
         <section id="private-games-notice" class="neu-inset private-notice hidden">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

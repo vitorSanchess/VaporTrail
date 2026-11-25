@@ -73,6 +73,20 @@
     xpTotal: document.getElementById("xp-total"),
     xpPercent: document.getElementById("xp-percent"),
 
+    engagementSection: document.getElementById("engagement-section"),
+    engagementSummary: document.getElementById("engagement-summary"),
+    engUnplayedPct: document.getElementById("eng-unplayed-pct"),
+    engUnplayedCount: document.getElementById("eng-unplayed-count"),
+    engTop3Share: document.getElementById("eng-top3-share"),
+    engTop3Hours: document.getElementById("eng-top3-hours"),
+    engMedianHours: document.getElementById("eng-median-hours"),
+    depthTrack: document.getElementById("depth-track"),
+    depthLegend: document.getElementById("depth-legend"),
+    backlogHours: document.getElementById("backlog-hours"),
+    backlogSub: document.getElementById("backlog-sub"),
+    backlogPicksWrap: document.getElementById("backlog-picks-wrap"),
+    backlogPicks: document.getElementById("backlog-picks"),
+
     breakdownSection: document.getElementById("breakdown-section"),
     breakdownPlaytimeBtn: document.getElementById("breakdown-playtime"),
     breakdownCountBtn: document.getElementById("breakdown-count"),
@@ -381,6 +395,7 @@
 
     // Standing & Progression
     renderStanding(p);
+    renderEngagement(p);
 
     // Private notice vs Breakdown & Games showcase
     const topGames = Array.isArray(p.topPlayedGames) ? p.topPlayedGames : [];
@@ -486,6 +501,109 @@
       el.progressionCol.classList.remove("hidden");
     } else {
       el.progressionCol.classList.add("hidden");
+    }
+  }
+
+  function renderEngagement(p) {
+    const eng = p.engagement;
+    if (!eng || p.gamesArePrivate) {
+      el.engagementSection.classList.add("hidden");
+      return;
+    }
+
+    el.engagementSection.classList.remove("hidden");
+    el.engagementSummary.textContent = `${formatNumber(eng.unplayedGamesCount)} of ${formatNumber(eng.totalGamesCount)} games unplayed`;
+
+    el.engUnplayedPct.textContent = `${eng.unplayedPercent}%`;
+    el.engUnplayedCount.textContent = `${formatNumber(eng.unplayedGamesCount)} games`;
+
+    el.engTop3Share.textContent = `${eng.top3PlaytimeSharePercent}%`;
+    el.engTop3Hours.textContent = `${formatHours(eng.top3PlaytimeHours)}h combined`;
+
+    el.engMedianHours.textContent = typeof eng.medianPlayedHours === "number"
+      ? `${formatHours(eng.medianPlayedHours)}h`
+      : "--";
+
+    const depthColors = {
+      unplayed: "var(--depth-unplayed)",
+      sampled: "var(--depth-sampled)",
+      played: "var(--depth-played)",
+      dedicated: "var(--depth-dedicated)"
+    };
+
+    el.depthTrack.innerHTML = "";
+    el.depthLegend.innerHTML = "";
+
+    (eng.depthBuckets || []).forEach((bucket) => {
+      const color = depthColors[bucket.key] || "var(--accent)";
+
+      if (bucket.gameCount > 0 && bucket.sharePercent > 0) {
+        const seg = document.createElement("div");
+        seg.className = "depth-seg";
+        seg.style.width = `${bucket.sharePercent}%`;
+        seg.style.backgroundColor = color;
+        seg.title = `${bucket.label}: ${formatNumber(bucket.gameCount)} (${bucket.sharePercent}%)`;
+        el.depthTrack.appendChild(seg);
+      }
+
+      const item = document.createElement("span");
+      item.className = "depth-legend-item";
+
+      const swatch = document.createElement("span");
+      swatch.className = "depth-swatch";
+      swatch.style.backgroundColor = color;
+
+      const label = document.createElement("span");
+      label.textContent = bucket.label;
+
+      const count = document.createElement("span");
+      count.className = "depth-legend-count";
+      count.textContent = formatNumber(bucket.gameCount);
+
+      item.appendChild(swatch);
+      item.appendChild(label);
+      item.appendChild(count);
+      el.depthLegend.appendChild(item);
+    });
+
+    if (eng.unplayedGamesCount === 0) {
+      el.backlogHours.textContent = "0h";
+      el.backlogSub.textContent = "All owned games played";
+    } else if (typeof eng.estimatedBacklogHours === "number") {
+      el.backlogHours.textContent = `${formatHours(eng.estimatedBacklogHours)}h`;
+      el.backlogSub.textContent = eng.backlogMatchedGamesCount < eng.unplayedGamesCount
+        ? `Main story across ${formatNumber(eng.backlogMatchedGamesCount)} of ${formatNumber(eng.unplayedGamesCount)} unplayed games`
+        : `Main story across ${formatNumber(eng.backlogMatchedGamesCount)} unplayed games`;
+    } else {
+      el.backlogHours.textContent = "--";
+      el.backlogSub.textContent = "No HowLongToBeat times matched";
+    }
+
+    el.backlogPicks.innerHTML = "";
+    const picks = Array.isArray(eng.quickestToBeat) ? eng.quickestToBeat : [];
+    if (picks.length === 0) {
+      el.backlogPicksWrap.classList.add("hidden");
+    } else {
+      el.backlogPicksWrap.classList.remove("hidden");
+      picks.forEach((pick) => {
+        const link = document.createElement("a");
+        link.className = "backlog-pick";
+        link.href = pick.storeUrl || `https://store.steampowered.com/app/${pick.appId}`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+
+        const name = document.createElement("span");
+        name.className = "backlog-pick-name";
+        name.textContent = pick.name;
+
+        const hours = document.createElement("span");
+        hours.className = "backlog-pick-hours";
+        hours.textContent = `${formatHours(pick.hltbMainHours)}h`;
+
+        link.appendChild(name);
+        link.appendChild(hours);
+        el.backlogPicks.appendChild(link);
+      });
     }
   }
 

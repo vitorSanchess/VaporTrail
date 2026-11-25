@@ -75,13 +75,17 @@ public sealed class SteamProfileService : ISteamProfileService
                 var enriched = demoResult.Profile;
                 if (!enriched.GamesArePrivate)
                 {
-                    var library = DemoSteamDataProvider.GetDemoLibraryForBreakdown(enriched);
+                    var ownedLibrary = DemoSteamDataProvider.GetDemoOwnedLibrary(enriched);
                     var catalogGames = await _catalogService.GetGamesByAppIdsAsync(
-                        library.Select(x => x.AppId),
+                        ownedLibrary.Select(x => x.AppId),
                         cancellationToken);
+                    var breakdownPairs = ownedLibrary
+                        .Select(x => (x.AppId, x.PlaytimeHours))
+                        .ToList();
                     enriched = enriched with
                     {
-                        Breakdown = LibraryBreakdownBuilder.Build(library, catalogGames)
+                        Breakdown = LibraryBreakdownBuilder.Build(breakdownPairs, catalogGames),
+                        Engagement = BacklogEngagementBuilder.Build(ownedLibrary, catalogGames)
                     };
                     demoResult = SteamLookupResult.Ok(enriched);
                 }
@@ -170,15 +174,23 @@ public sealed class SteamProfileService : ISteamProfileService
             var progression = BuildAccountProgression(badgesBody, friendCount);
 
             LibraryBreakdown? breakdown = null;
+            BacklogEngagement? engagement = null;
             if (!gamesArePrivate && ownedGames.Count > 0)
             {
-                var ownedPairs = ownedGames
-                    .Select(g => (g.AppId, Math.Round(g.PlaytimeForever / 60.0, 1)))
+                var ownedLibrary = ownedGames
+                    .Select(g => (
+                        g.AppId,
+                        string.IsNullOrWhiteSpace(g.Name) ? $"App {g.AppId}" : g.Name,
+                        Math.Round(g.PlaytimeForever / 60.0, 1)))
+                    .ToList();
+                var ownedPairs = ownedLibrary
+                    .Select(x => (x.AppId, x.Item3))
                     .ToList();
                 var catalogGames = await _catalogService.GetGamesByAppIdsAsync(
                     ownedPairs.Select(x => x.AppId),
                     cancellationToken);
                 breakdown = LibraryBreakdownBuilder.Build(ownedPairs, catalogGames);
+                engagement = BacklogEngagementBuilder.Build(ownedLibrary, catalogGames);
             }
 
             var profile = new SteamProfileResponse(
@@ -211,7 +223,8 @@ public sealed class SteamProfileService : ISteamProfileService
                 FetchedAtUtc: now,
                 Standing: standing,
                 Progression: progression,
-                Breakdown: breakdown
+                Breakdown: breakdown,
+                Engagement: engagement
             );
 
             CacheProfile(queryCacheKey, profile);

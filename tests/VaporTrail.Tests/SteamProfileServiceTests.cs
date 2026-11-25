@@ -161,6 +161,9 @@ public class SteamProfileServiceTests
         Assert.Equal(2, first.Profile.Breakdown.MatchedGamesCount);
         Assert.Equal("Action", first.Profile.Breakdown.GenresByPlaytime[0].Name);
         Assert.Equal("Valve", first.Profile.Breakdown.TopDevelopers[0].Name);
+        Assert.NotNull(first.Profile.Engagement);
+        Assert.Equal(2, first.Profile.Engagement.PlayedGamesCount);
+        Assert.Equal(0, first.Profile.Engagement.UnplayedGamesCount);
         Assert.Equal(7, requestCount);
 
         // Second request should hit memory cache without calling Steam API.
@@ -266,6 +269,8 @@ public class SteamProfileServiceTests
         Assert.Null(result.Profile.TotalOwnedGames);
         Assert.Empty(result.Profile.TopPlayedGames);
         Assert.Empty(result.Profile.RecentlyPlayed);
+        Assert.Null(result.Profile.Breakdown);
+        Assert.Null(result.Profile.Engagement);
     }
 
     [Fact]

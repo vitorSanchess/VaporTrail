@@ -26,7 +26,36 @@ public sealed record SteamProfileResponse(
     DateTimeOffset FetchedAtUtc,
     AccountStanding? Standing = null,
     AccountProgression? Progression = null,
-    LibraryBreakdown? Breakdown = null
+    LibraryBreakdown? Breakdown = null,
+    BacklogEngagement? Engagement = null
+);
+
+public sealed record EngagementBucket(
+    string Key,
+    string Label,
+    int GameCount,
+    double SharePercent
+);
+
+public sealed record BacklogCandidate(
+    int AppId,
+    string Name,
+    double HltbMainHours,
+    string StoreUrl
+);
+
+public sealed record BacklogEngagement(
+    int TotalGamesCount,
+    int PlayedGamesCount,
+    int UnplayedGamesCount,
+    double UnplayedPercent,
+    double Top3PlaytimeHours,
+    double Top3PlaytimeSharePercent,
+    double? MedianPlayedHours,
+    double? EstimatedBacklogHours,
+    int BacklogMatchedGamesCount,
+    IReadOnlyList<EngagementBucket> DepthBuckets,
+    IReadOnlyList<BacklogCandidate> QuickestToBeat
 );
 
 public sealed record AccountStanding(

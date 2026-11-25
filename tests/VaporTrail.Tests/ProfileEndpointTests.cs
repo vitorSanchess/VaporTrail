@@ -86,6 +86,11 @@ public class ProfileEndpointTests(ProfileEndpointTests.VaporTrailAppFactory fact
         Assert.NotEmpty(profile.Breakdown.GenresByPlaytime);
         Assert.NotEmpty(profile.Breakdown.TopDevelopers);
         Assert.NotEmpty(profile.Breakdown.TopTags);
+        Assert.NotNull(profile.Engagement);
+        Assert.True(profile.Engagement.UnplayedGamesCount > 0);
+        Assert.True(profile.Engagement.EstimatedBacklogHours > 0);
+        Assert.Equal(4, profile.Engagement.DepthBuckets.Count);
+        Assert.NotEmpty(profile.Engagement.QuickestToBeat);
     }
 
     [Fact]

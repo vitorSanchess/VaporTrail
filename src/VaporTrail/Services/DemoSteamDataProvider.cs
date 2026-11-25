@@ -106,34 +106,49 @@ public static class DemoSteamDataProvider
         return SteamLookupResult.Ok(profile);
     }
 
-    public static IReadOnlyList<(int AppId, double PlaytimeHours)> GetDemoLibraryForBreakdown(SteamProfileResponse profile)
+    public static IReadOnlyList<(int AppId, string Name, double PlaytimeHours)> GetDemoOwnedLibrary(SteamProfileResponse profile)
     {
         var baseList = profile.TopPlayedGames
-            .Select(g => (g.AppId, g.PlaytimeHours))
+            .Select(g => (g.AppId, g.Name, g.PlaytimeHours))
             .ToList();
 
         if (profile.SteamId == "76561198000000001")
         {
             baseList.AddRange([
-                (1145360, 74.0),
-                (1091500, 52.0),
-                (570, 38.0)
+                (1145360, "Hades", 1.4),
+                (570, "Dota 2", 12.5),
+                (550, "Left 4 Dead 2", 0.0),
+                (1091500, "Cyberpunk 2077", 0.0),
+                (1245620, "ELDEN RING", 0.0)
             ]);
         }
         else if (profile.SteamId == "76561197960435530")
         {
             baseList.AddRange([
-                (413150, 96.0),
-                (1145360, 64.0),
-                (4000, 51.0)
+                (4000, "Garry's Mod", 1.2),
+                (546560, "Half-Life: Alyx", 14.5),
+                (413150, "Stardew Valley", 0.0),
+                (1145360, "Hades", 0.0)
+            ]);
+        }
+        else
+        {
+            baseList.AddRange([
+                (220, "Half-Life 2", 0.0),
+                (550, "Left 4 Dead 2", 0.0)
             ]);
         }
 
         return baseList
             .GroupBy(x => x.AppId)
-            .Select(g => (g.Key, g.First().PlaytimeHours))
+            .Select(g => g.First())
             .ToList();
     }
+
+    public static IReadOnlyList<(int AppId, double PlaytimeHours)> GetDemoLibraryForBreakdown(SteamProfileResponse profile) =>
+        GetDemoOwnedLibrary(profile)
+            .Select(x => (x.AppId, x.PlaytimeHours))
+            .ToList();
 
     private static AccountStanding CleanStanding() =>
         new(
