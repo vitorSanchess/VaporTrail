@@ -1,0 +1,26 @@
+## .NET build artifacts
+bin/
+obj/
+out/
+TestResults/
+coverage*.xml
+*.trx
+
+## User-specific & IDE files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+## Local secrets & overrides
+appsettings.Local.json
+.env
+.env.*
+
+## OS files
+.DS_Store
+Thumbs.db

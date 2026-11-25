@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VaporTrail</title>
+  <meta name="description" content="Look up Steam profiles by 64-bit Steam ID, vanity name, or profile URL." />
+  <link rel="stylesheet" href="/styles.css" />
+  <script>
+    // Apply saved or system theme before first paint to prevent theme flash.
+    (function () {
+      const saved = localStorage.getItem("vaportrail-theme");
+      const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", saved || preferred);
+    })();
+  </script>
+</head>
+<body>
+  <div class="page-shell">
+    <!-- Top Navigation / Header -->
+    <header class="top-bar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="15" cy="9" r="2.2" />
+            <path d="M5.5 14.5l4.2 1.8a2.2 2.2 0 0 0 2.9-1.1l1.7-3.9" />
+          </svg>
+        </div>
+        <h1 class="brand-title">VaporTrail</h1>
+      </div>
+
+      <div class="top-controls">
+        <button id="mode-badge" type="button" class="mode-pill" aria-expanded="false" aria-controls="api-key-help" title="Steam API key setup">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span id="mode-label">Checking status...</span>
+        </button>
+
+        <button id="theme-toggle" type="button" class="theme-switch" role="switch" aria-checked="false" aria-label="Toggle dark neumorphism theme">
+          <span class="switch-icon switch-sun" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+            </svg>
+          </span>
+          <span class="switch-icon switch-moon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </span>
+          <span class="switch-thumb" aria-hidden="true"></span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Collapsible API Key Setup Panel (shown on demand in Demo Mode) -->
+    <section id="api-key-help" class="help-drawer hidden" aria-label="Steam Web API key setup">
+      <div class="help-drawer-header">
+        <strong>Connect a Steam API key</strong>
+        <button id="close-help-btn" type="button" class="icon-btn" aria-label="Close setup instructions">&times;</button>
+      </div>
+      <p class="help-text">
+        Get a Steam Web API key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener noreferrer">steamcommunity.com/dev/apikey</a>, then set it with either command:
+      </p>
+      <div class="code-snippets">
+        <code>dotnet user-secrets set "Steam:ApiKey" "YOUR_KEY" --project src/VaporTrail</code>
+        <code>STEAM_API_KEY="YOUR_KEY" dotnet run --project src/VaporTrail</code>
+      </div>
+    </section>
+
+    <main>
+      <!-- Search Panel -->
+      <section class="neu-card search-panel" aria-label="Search Steam Profile">
+        <form id="search-form" class="search-form" novalidate>
+          <label for="steam-query" class="sr-only">SteamID64, custom vanity name, or Steam profile URL</label>
+          <div class="search-input-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              id="steam-query"
+              name="query"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="SteamID64, vanity name, or profile URL"
+            />
+          </div>
+          <button id="lookup-btn" type="submit" class="neu-btn neu-btn-primary">
+            <span class="btn-label">Look up profile</span>
+          </button>
+        </form>
+
+        <div class="quick-rows">
+          <div id="sample-row" class="chip-row hidden">
+            <span class="chip-row-label">Samples</span>
+            <div id="sample-chips" class="chip-group"></div>
+          </div>
+
+          <div id="recent-row" class="chip-row hidden">
+            <span class="chip-row-label">Recent</span>
+            <div id="recent-chips" class="chip-group"></div>
+            <button id="clear-recent-btn" type="button" class="text-action-btn">Clear</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Feedback / Error Banner -->
+      <div id="error-banner" class="neu-inset error-banner hidden" role="alert">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        <span id="error-message"></span>
+      </div>
+
+      <!-- Loading Skeleton -->
+      <section id="loading-state" class="loading-shell hidden" aria-busy="true" aria-label="Loading Steam profile">
+        <div class="neu-card skeleton-hero">
+          <div class="skeleton-box skeleton-avatar"></div>
+          <div class="skeleton-lines">
+            <div class="skeleton-box skeleton-line-lg"></div>
+            <div class="skeleton-box skeleton-line-md"></div>
+            <div class="skeleton-box skeleton-line-sm"></div>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="neu-card skeleton-stat"></div>
+          <div class="neu-card skeleton-stat"></div>
+          <div class="neu-card skeleton-stat"></div>
+        </div>
+      </section>
+
+      <!-- Empty Welcome State -->
+      <section id="empty-state" class="neu-inset empty-state">
+        <p class="empty-title">No profile loaded</p>
+        <p class="empty-hint">
+          Enter a SteamID64 (<code>76561197960435530</code>), vanity name (<code>gordonfreeman</code>), or steamcommunity.com URL, or pick a sample.
+        </p>
+      </section>
+
+      <!-- Profile Result -->
+      <article id="profile-view" class="profile-view hidden" aria-live="polite">
+        <!-- Hero Identity Card -->
+        <section class="neu-card hero-card">
+          <div class="hero-main">
+            <div class="avatar-pedestal">
+              <img id="profile-avatar" class="avatar-img" src="" alt="" />
+              <span id="avatar-status-dot" class="avatar-status-dot" title=""></span>
+            </div>
+
+            <div class="identity-col">
+              <div class="name-row">
+                <h2 id="profile-name" class="persona-name"></h2>
+                <div id="level-badge" class="level-medallion" title="Steam Level">
+                  <span class="level-prefix">LVL</span>
+                  <span id="profile-level" class="level-value">--</span>
+                </div>
+              </div>
+
+              <p id="profile-realname" class="real-name hidden"></p>
+
+              <div class="status-line">
+                <span id="status-indicator" class="status-pill"></span>
+                <span id="current-game" class="current-game hidden"></span>
+              </div>
+
+              <div class="meta-row">
+                <span id="meta-country" class="meta-item hidden"></span>
+                <span id="meta-member" class="meta-item hidden"></span>
+                <button id="copy-steamid-btn" type="button" class="meta-copy-btn" title="Copy 64-bit Steam ID">
+                  ID: <span id="meta-steamid"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-actions">
+            <a id="steam-external-link" href="#" target="_blank" rel="noopener noreferrer" class="neu-btn neu-btn-secondary">
+              View on Steam
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
+
+            <div class="fetch-meta">
+              <span id="cache-badge" class="fetch-badge"></span>
+              <button id="refresh-btn" type="button" class="text-action-btn" title="Bypass cache and fetch fresh data">
+                Refresh
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Key Stats Strip -->
+        <section class="stats-grid" aria-label="Profile statistics">
+          <div class="neu-card stat-card">
+            <span class="stat-label">Owned games</span>
+            <strong id="stat-games" class="stat-value">--</strong>
+          </div>
+
+          <div class="neu-card stat-card">
+            <span class="stat-label">Total playtime</span>
+            <strong id="stat-playtime" class="stat-value">--</strong>
+          </div>
+
+          <div class="neu-card stat-card">
+            <span class="stat-label">Profile visibility</span>
+            <strong id="stat-visibility" class="stat-value">--</strong>
+            <span id="stat-lastseen" class="stat-sub hidden"></span>
+          </div>
+        </section>
+
+        <!-- Private Games Notice -->
+        <section id="private-games-notice" class="neu-inset private-notice hidden">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <div>
+            <strong>Game library is private</strong>
+            <p>This account hides its games and playtime.</p>
+          </div>
+        </section>
+
+        <!-- Games Showcase -->
+        <section id="games-section" class="games-section hidden" aria-label="Steam games">
+          <div class="games-header">
+            <div class="segmented-control" role="tablist" aria-label="Game lists">
+              <button id="tab-top" type="button" role="tab" aria-selected="true" class="seg-btn active" data-tab="top">
+                Top played <span id="tab-top-count" class="seg-count">0</span>
+              </button>
+              <button id="tab-recent" type="button" role="tab" aria-selected="false" class="seg-btn" data-tab="recent">
+                Recently played <span id="tab-recent-count" class="seg-count">0</span>
+              </button>
+            </div>
+            <span id="games-caption" class="games-caption hidden"></span>
+          </div>
+
+          <div id="games-grid" class="games-grid"></div>
+          <p id="games-empty" class="neu-inset games-empty hidden"></p>
+        </section>
+      </article>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
