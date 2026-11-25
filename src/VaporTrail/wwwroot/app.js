@@ -18,6 +18,8 @@
     modeBadge: document.getElementById("mode-badge"),
     modeLabel: document.getElementById("mode-label"),
     apiKeyHelp: document.getElementById("api-key-help"),
+    helpDrawerTitle: document.getElementById("help-drawer-title"),
+    apiKeySetupBlock: document.getElementById("api-key-setup-block"),
     closeHelpBtn: document.getElementById("close-help-btn"),
     catalogStatusText: document.getElementById("catalog-status-text"),
     syncCatalogBtn: document.getElementById("sync-catalog-btn"),
@@ -175,6 +177,8 @@
   }
 
   // ========== Server Status & Sample Chips ==========
+  let canToggleHelpDrawer = false;
+
   async function loadServerStatus() {
     try {
       const res = await fetch("/api/status");
@@ -187,6 +191,26 @@
       } else {
         el.modeBadge.classList.add("is-live");
         el.modeLabel.textContent = "Steam API";
+      }
+
+      const canSync = Boolean(status.allowManualCatalogSync);
+      canToggleHelpDrawer = Boolean(status.isDemoMode || canSync);
+
+      el.apiKeySetupBlock.classList.toggle("hidden", !status.isDemoMode);
+      el.helpDrawerTitle.textContent = status.isDemoMode ? "Connect a Steam API key" : "Local catalog";
+      el.syncCatalogBtn.classList.toggle("hidden", !canSync);
+
+      if (!canToggleHelpDrawer) {
+        el.apiKeyHelp.classList.add("hidden");
+        el.modeBadge.disabled = true;
+        el.modeBadge.classList.add("is-static");
+        el.modeBadge.removeAttribute("aria-expanded");
+        el.modeBadge.title = "Connected to Steam Web API";
+      } else {
+        el.modeBadge.disabled = false;
+        el.modeBadge.classList.remove("is-static");
+        el.modeBadge.setAttribute("aria-expanded", String(!el.apiKeyHelp.classList.contains("hidden")));
+        el.modeBadge.title = status.isDemoMode ? "Steam API key setup" : "Local catalog status";
       }
 
       renderCatalogStatus(status.catalog);
@@ -210,6 +234,8 @@
   }
 
   function renderCatalogStatus(catalog) {
+    const syncVisible = !el.syncCatalogBtn.classList.contains("hidden");
+
     if (!catalog) {
       el.catalogStatusText.textContent = "Catalog: using built-in seed";
       return;
@@ -221,7 +247,7 @@
       return;
     }
 
-    el.syncCatalogBtn.disabled = false;
+    el.syncCatalogBtn.disabled = !syncVisible;
     if (catalog.isReady && catalog.gameCount > 0) {
       el.catalogStatusText.textContent = `Catalog: ${formatNumber(catalog.gameCount)} games cached`;
     } else if (catalog.lastError) {
@@ -967,6 +993,7 @@
   el.themeToggle.addEventListener("click", toggleTheme);
 
   el.modeBadge.addEventListener("click", () => {
+    if (!canToggleHelpDrawer) return;
     const isHidden = el.apiKeyHelp.classList.toggle("hidden");
     el.modeBadge.setAttribute("aria-expanded", String(!isHidden));
   });

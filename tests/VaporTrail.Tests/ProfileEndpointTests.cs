@@ -110,4 +110,20 @@ public class ProfileEndpointTests(ProfileEndpointTests.VaporTrailAppFactory fact
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task ProductionEnvironment_DisablesManualCatalogSync()
+    {
+        using var prodFactory = factory.WithWebHostBuilder(b => b.UseEnvironment("Production"));
+        using var prodClient = prodFactory.CreateClient();
+
+        var statusResponse = await prodClient.GetAsync("/api/status");
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+        var status = await statusResponse.Content.ReadFromJsonAsync<SteamServiceStatus>();
+        Assert.NotNull(status);
+        Assert.False(status.AllowManualCatalogSync);
+
+        var syncResponse = await prodClient.PostAsync("/api/catalog/sync?force=true", null);
+        Assert.Equal(HttpStatusCode.NotFound, syncResponse.StatusCode);
+    }
 }

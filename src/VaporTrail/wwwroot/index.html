@@ -53,22 +53,24 @@
       </div>
     </header>
 
-    <!-- Collapsible API Key Setup Panel (shown on demand in Demo Mode) -->
+    <!-- Collapsible API Key Setup Panel (shown on demand in Demo Mode or local dev) -->
     <section id="api-key-help" class="help-drawer hidden" aria-label="Steam Web API key setup">
       <div class="help-drawer-header">
-        <strong>Connect a Steam API key</strong>
+        <strong id="help-drawer-title">Connect a Steam API key</strong>
         <button id="close-help-btn" type="button" class="icon-btn" aria-label="Close setup instructions">&times;</button>
       </div>
-      <p class="help-text">
-        Get a Steam Web API key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener noreferrer">steamcommunity.com/dev/apikey</a>, then set it with either command:
-      </p>
-      <div class="code-snippets">
-        <code>dotnet user-secrets set "Steam:ApiKey" "YOUR_KEY" --project src/VaporTrail</code>
-        <code>STEAM_API_KEY="YOUR_KEY" dotnet run --project src/VaporTrail</code>
+      <div id="api-key-setup-block">
+        <p class="help-text">
+          Get a Steam Web API key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener noreferrer">steamcommunity.com/dev/apikey</a>, then set it with either command:
+        </p>
+        <div class="code-snippets">
+          <code>dotnet user-secrets set "Steam:ApiKey" "YOUR_KEY" --project src/VaporTrail</code>
+          <code>STEAM_API_KEY="YOUR_KEY" dotnet run --project src/VaporTrail</code>
+        </div>
       </div>
       <div class="catalog-sync-row">
         <span id="catalog-status-text" class="catalog-status-text">Catalog: checking...</span>
-        <button id="sync-catalog-btn" type="button" class="neu-btn neu-btn-secondary">Sync catalog</button>
+        <button id="sync-catalog-btn" type="button" class="neu-btn neu-btn-secondary hidden">Sync catalog</button>
       </div>
     </section>
 

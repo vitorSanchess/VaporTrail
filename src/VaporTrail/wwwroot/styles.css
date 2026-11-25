@@ -331,6 +331,14 @@ a:hover {
   transition: box-shadow 150ms ease-out, color 150ms ease-out;
 }
 
+.mode-pill.is-static,
+.mode-pill.is-static:hover,
+.mode-pill.is-static:active {
+  cursor: default;
+  color: var(--text-secondary);
+  box-shadow: var(--neu-raised-sm);
+}
+
 .mode-pill:hover {
   color: var(--text-primary);
   box-shadow: var(--neu-raised-sm-hover);

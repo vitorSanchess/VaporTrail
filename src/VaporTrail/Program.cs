@@ -71,19 +71,25 @@ var api = app.MapGroup("/api");
 api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 api.MapGet("/status", (ISteamProfileService steamService) =>
-    Results.Ok(steamService.GetStatus()));
+    Results.Ok(steamService.GetStatus() with
+    {
+        AllowManualCatalogSync = app.Environment.IsDevelopment()
+    }));
 
 api.MapGet("/catalog/status", (ISteamCatalogService catalogService) =>
     Results.Ok(catalogService.GetStatus()));
 
-api.MapPost("/catalog/sync", async (
-    bool? force,
-    ISteamCatalogService catalogService,
-    CancellationToken cancellationToken) =>
+if (app.Environment.IsDevelopment())
 {
-    var status = await catalogService.SyncFromRemoteAsync(force ?? false, cancellationToken);
-    return Results.Ok(status);
-});
+    api.MapPost("/catalog/sync", async (
+        bool? force,
+        ISteamCatalogService catalogService,
+        CancellationToken cancellationToken) =>
+    {
+        var status = await catalogService.SyncFromRemoteAsync(force ?? false, cancellationToken);
+        return Results.Ok(status);
+    });
+}
 
 api.MapGet("/steam/profile", async (
     string? query,

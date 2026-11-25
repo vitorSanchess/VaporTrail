@@ -115,5 +115,6 @@ public sealed record SteamServiceStatus(
     bool IsDemoMode,
     int CacheDurationMinutes,
     IReadOnlyList<SampleProfileHint> SampleProfiles,
-    SteamCatalogStatus? Catalog = null
+    SteamCatalogStatus? Catalog = null,
+    bool AllowManualCatalogSync = false
 );
